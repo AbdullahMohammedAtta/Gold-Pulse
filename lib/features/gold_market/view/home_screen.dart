@@ -65,7 +65,7 @@ class HomeScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.2),
+                            color: Color.fromRGBO(0, 255, 0, 0.2),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text('+1.42% (+\$33.40 today)', style: TextStyle(fontSize: 11, color: Colors.green)),
