@@ -1,0 +1,21 @@
+lib/
+│
+├── core/                  #  (Theme, Constants, API Endpoints, Localization)
+│
+├── features/              
+│   │
+│   ├── gold_market/       
+│   │   ├── models/        # GoldPrice Model
+│   │   ├── view_models/   # GoldCubit ( ViewModel)
+│   │   └── views/         # GoldScreen, ChartWidget
+│   │
+│   ├── portfolio/         
+│   │   ├── models/        # PortfolioItem Model
+│   │   ├── view_models/   # PortfolioCubit
+│   │   └── views/         # PortfolioScreen, AddItemBottomSheet
+│   │
+│   └── settings/          
+│       ├── view_models/   # SettingsCubit
+│       └── views/         # SettingsScreen
+│
+└── main.dart
