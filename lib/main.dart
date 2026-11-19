@@ -1,9 +1,12 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gold/core/BlocObserver.dart';
 import 'package:gold/features/lay_out/view/lay_out_screen.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_cubit.dart';
 import 'package:material_ui/material_ui.dart';
 
 void main() {
+  Bloc.observer = MyBlocObserver();
+
   runApp(const MyApp());
 }
 
