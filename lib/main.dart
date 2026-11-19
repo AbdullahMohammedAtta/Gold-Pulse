@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gold/core/BlocObserver.dart';
 import 'package:gold/core/services/gold_service.dart';
@@ -6,7 +7,6 @@ import 'package:gold/features/lay_out/view_model/lay_out_cubit.dart';
 
 // عدّل مسارات الاستيراد أدناه حسب أماكن الملفات الحقيقية في مشروعك
 import 'package:gold/features/gold_market/view_model/gold_cubit.dart';
-import 'package:material_ui/material_ui.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +27,7 @@ class MyApp extends StatelessWidget {
         ),
         BlocProvider<GoldCubit>(
           create: (context) =>
-          GoldCubit(GoldService())..fetchGoldPrices(currency: 'GBP'),
+          GoldCubit(GoldService())..fetchGoldPrices(currency: 'ُEGP'),
         ),
       ],
       child: MaterialApp(

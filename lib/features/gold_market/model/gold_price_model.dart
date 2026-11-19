@@ -8,7 +8,7 @@ class GoldPriceModel {
   final String currency;
   final DateTime lastUpdated;
 
-  GoldPriceModel({
+  const GoldPriceModel({
     required this.priceOunce,
     required this.priceGram24k,
     required this.priceGram22k,
@@ -19,68 +19,75 @@ class GoldPriceModel {
     required this.lastUpdated,
   });
 
-  /// بناء الموديل من استجابة goldprice.dev أو من الكاش المحلي
+  static const double _gramsPerTroyOunce = 31.1034768;
+
   factory GoldPriceModel.fromApiResponse({
     required Map<String, dynamic> json,
     required String currency,
     double fxRate = 1.0,
     DateTime? cachedTime,
   }) {
-    // في goldprice.dev السعر الأساسي للأونصة بيكون غالباً تحت مفتاح 'price' أو 'spot' أو 'gold'
-    final double rawOunceUsd =
-    ((json['price'] ?? json['spot'] ?? json['gold'] ?? 0) as num)
-        .toDouble();
+    final String targetCurrency = currency.trim().toUpperCase();
+    final List<dynamic> symbols =
+    json['symbols'] is List ? json['symbols'] as List : const [];
 
-    // تحويل الأونصة إلى جرام عيار 24 (الأونصة التروي = 31.1034768 جرام)
-    const double gramsPerTroyOunce = 31.1034768;
-    double gram24Usd =
-    rawOunceUsd > 0 ? (rawOunceUsd / gramsPerTroyOunce) : 0.0;
+    Map<String, dynamic>? directMatch;
+    Map<String, dynamic>? usdMatch;
 
-    // لو الاستجابة فيها أسعار عيارات جاهزة (عند استخدام ?include=karat) نستخدمها لو متاحة
-    final Map<String, dynamic>? karats =
-    json['karats'] is Map<String, dynamic>
-        ? json['karats'] as Map<String, dynamic>
-        : (json['karat'] is Map<String, dynamic>
-        ? json['karat'] as Map<String, dynamic>
-        : null);
+    for (final item in symbols) {
+      if (item is Map) {
+        final String sym =
+        (item['symbol'] ?? '').toString().trim().toUpperCase();
+        final String quote =
+        (item['quote_currency'] ?? '').toString().trim().toUpperCase();
 
-    double gram24 = gram24Usd;
-    double gram22 = gram24 * (22 / 24);
-    double gram21 = gram24 * (21 / 24);
-    double gram18 = gram24 * (18 / 24);
-
-    if (karats != null) {
-      gram24 = ((karats['24k'] ?? karats['24K'] ?? gram24) as num).toDouble();
-      gram22 = ((karats['22k'] ?? karats['22K'] ?? gram22) as num).toDouble();
-      gram21 = ((karats['21k'] ?? karats['21K'] ?? gram21) as num).toDouble();
-      gram18 = ((karats['18k'] ?? karats['18K'] ?? gram18) as num).toDouble();
+        if (sym == 'XAU' && quote == targetCurrency) {
+          directMatch = Map<String, dynamic>.from(item);
+          break;
+        }
+        if (sym == 'XAU' && quote == 'USD') {
+          usdMatch = Map<String, dynamic>.from(item);
+        }
+      }
     }
 
-    // تطبيق معامل تحويل العملة (1.0 للدولار، أو سعر الصرف للعملة المختارة)
-    final double ounceInCurrency = rawOunceUsd * fxRate;
-    final double g24InCurrency = gram24 * fxRate;
-    final double g22InCurrency = gram22 * fxRate;
-    final double g21InCurrency = gram21 * fxRate;
-    final double g18InCurrency = gram18 * fxRate;
+    double ouncePrice = 0.0;
+    DateTime resolvedDate = cachedTime ?? DateTime.now();
 
-    final double chp =
-    ((json['chp'] ?? json['change_percent'] ?? json['changePercent'] ?? 0)
-    as num)
-        .toDouble();
+    if (directMatch != null) {
+      ouncePrice = _parseDouble(directMatch['price']);
+      resolvedDate =
+          DateTime.tryParse((directMatch['computed_at'] ?? '').toString())
+              ?.toLocal() ??
+              resolvedDate;
+    } else if (usdMatch != null) {
+      final double usdOunce = _parseDouble(usdMatch['price']);
+      ouncePrice = usdOunce * (fxRate > 0 ? fxRate : 1.0);
+      resolvedDate =
+          DateTime.tryParse((usdMatch['computed_at'] ?? '').toString())
+              ?.toLocal() ??
+              resolvedDate;
+    }
+
+    final double gram24 =
+    ouncePrice > 0 ? (ouncePrice / _gramsPerTroyOunce) : 0.0;
+
+    final double chp = _parseDouble(
+      json['chp'] ?? json['change_percent'] ?? json['changePercent'] ?? 0,
+    );
 
     return GoldPriceModel(
-      priceOunce: ounceInCurrency,
-      priceGram24k: g24InCurrency,
-      priceGram22k: g22InCurrency,
-      priceGram21k: g21InCurrency,
-      priceGram18k: g18InCurrency,
+      priceOunce: ouncePrice,
+      priceGram24k: gram24,
+      priceGram22k: gram24 * (22 / 24),
+      priceGram21k: gram24 * (21 / 24),
+      priceGram18k: gram24 * (18 / 24),
       changePercentage: chp,
-      currency: currency.toUpperCase(),
-      lastUpdated: cachedTime ?? DateTime.now(),
+      currency: targetCurrency,
+      lastUpdated: resolvedDate,
     );
   }
 
-  /// تحويل الموديل لـ JSON لحفظه في SharedPreferences
   Map<String, dynamic> toCacheJson() {
     return {
       'price': priceOunce,
@@ -94,19 +101,24 @@ class GoldPriceModel {
     };
   }
 
-  /// قراءة مباشرة من بيانات مخزنة مسبقاً بالعملة المطلوبة
   factory GoldPriceModel.fromCacheJson(Map<String, dynamic> map) {
     return GoldPriceModel(
-      priceOunce: ((map['price'] ?? 0) as num).toDouble(),
-      priceGram24k: ((map['price_gram_24k'] ?? 0) as num).toDouble(),
-      priceGram22k: ((map['price_gram_22k'] ?? 0) as num).toDouble(),
-      priceGram21k: ((map['price_gram_21k'] ?? 0) as num).toDouble(),
-      priceGram18k: ((map['price_gram_18k'] ?? 0) as num).toDouble(),
-      changePercentage: ((map['chp'] ?? 0) as num).toDouble(),
+      priceOunce: _parseDouble(map['price']),
+      priceGram24k: _parseDouble(map['price_gram_24k']),
+      priceGram22k: _parseDouble(map['price_gram_22k']),
+      priceGram21k: _parseDouble(map['price_gram_21k']),
+      priceGram18k: _parseDouble(map['price_gram_18k']),
+      changePercentage: _parseDouble(map['chp']),
       currency: (map['currency'] ?? 'USD').toString(),
       lastUpdated: map['lastUpdated'] != null
-          ? DateTime.parse(map['lastUpdated'])
+          ? (DateTime.tryParse(map['lastUpdated'].toString()) ?? DateTime.now())
           : DateTime.now(),
     );
+  }
+
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString().trim()) ?? 0.0;
   }
 }

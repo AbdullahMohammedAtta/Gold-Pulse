@@ -1,20 +1,21 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gold/features/gold_market/model/gold_price_model.dart';
-import 'package:material_ui/material_ui.dart';
 
-// عدّل مسارات الاستيراد حسب مكان الملفات عندك في المشروع
+// عدّل مسارات الاستيراد حسب أماكن الملفات في مشروعك
 import '../view_model/gold_cubit.dart';
 import '../view_model/gold_state.dart';
 
 class HomeScreen extends StatelessWidget {
-   HomeScreen({super.key});
+  HomeScreen({super.key});
 
-   final currencies = [
-     {'code': 'USD', 'label': 'USD (\$)', 'symbol': '\$'},
-     {'code': 'EUR', 'label': 'EUR (€)', 'symbol': '€'},
-     {'code': 'GBP', 'label': 'GBP (£)', 'symbol': '£'},
-     {'code': 'AED', 'label': 'AED (د.إ)', 'symbol': 'د.إ '},
-   ];
+  final currencies = [
+    {'code': 'EGP', 'label': 'EGP (ج.م)', 'symbol': 'ج.م '},
+    {'code': 'USD', 'label': 'USD (\$)', 'symbol': '\$'},
+    {'code': 'EUR', 'label': 'EUR (€)', 'symbol': '€'},
+    {'code': 'GBP', 'label': 'GBP (£)', 'symbol': '£'},
+    {'code': 'AED', 'label': 'AED (د.إ)', 'symbol': 'د.إ '},
+  ];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,7 +161,7 @@ class HomeScreen extends StatelessWidget {
                           Text(
                             '$symbol${_formatNumber(ouncePrice)}',
                             style: const TextStyle(
-                              fontSize: 30,
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
                               color: Colors.white,
                             ),
@@ -233,46 +234,50 @@ class HomeScreen extends StatelessWidget {
                     const SizedBox(height: 16),
 
                     // --- Currency Selector Chips ---
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: currencies.map((item) {
-                        final String code = item['code']!;
-                        final String label = item['label']!;
-                        final bool isSelected = selectedCurrency == code;
+                    SizedBox(
+                      height: 38,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: const BouncingScrollPhysics(),
+                        itemCount: currencies.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, index) {
+                          final item = currencies[index];
+                          final String code = item['code']!;
+                          final String label = item['label']!;
+                          final bool isSelected = selectedCurrency == code;
 
-                        return GestureDetector(
-                          onTap: () {
-                            context.read<GoldCubit>().changeCurrency(code);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFFFFD700)
-                                  : const Color(0xFF1E1E24),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
+                          return GestureDetector(
+                            onTap: () {
+                              context.read<GoldCubit>().changeCurrency(code);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              alignment: Alignment.center,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
                                 color: isSelected
                                     ? const Color(0xFFFFD700)
-                                    : Colors.white10,
+                                    : const Color(0xFF1E1E24),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected ? const Color(0xFFFFD700) : Colors.white10,
+                                ),
+                              ),
+                              child: Text(
+                                label,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.black : Colors.white70,
+                                ),
                               ),
                             ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: isSelected
-                                    ? Colors.black
-                                    : Colors.white70,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        },
+                      ),
                     ),
                     const SizedBox(height: 20),
 

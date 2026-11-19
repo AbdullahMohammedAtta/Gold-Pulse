@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:gold/features/gold_market/model/gold_price_model.dart';
@@ -7,13 +8,13 @@ class GoldService {
   static const String _goldBaseUrl = 'https://api.goldprice.dev/v1/';
   static const String _fxBaseUrl = 'https://open.er-api.com/v6/latest/';
 
-  // مدة الكاش: 1 ساعة
   static const Duration cacheDuration = Duration(hours: 6);
+  static const String _rawSymbolsKey = 'gold_raw_symbols_v2';
+  static const String _rawSymbolsTimeKey = 'gold_raw_symbols_time_v2';
 
   final Dio _goldDio;
   final Dio _fxDio;
 
-  /// يمكنك تمرير [apiKey] إذا كان لديك مفتاح من goldprice.dev، أو تركه فارغاً للخطة المجانية
   GoldService({String? apiKey})
       : _goldDio = Dio(
     BaseOptions(
@@ -32,137 +33,110 @@ class GoldService {
             connectTimeout: const Duration(seconds: 10),
             receiveTimeout: const Duration(seconds: 10),
           ),
-        ) {
-    // Interceptor خفيف لطباعة الطلبات والأخطاء أثناء التطوير
-    _goldDio.interceptors.add(
-      LogInterceptor(
-        requestBody: false,
-        responseBody: true,
-        error: true,
-      ),
-    );
-  }
-
-  /// جلب أسعار الذهب بالعملة المطلوبة (الافتراضي: USD أو EGP)
-  /// [forceRefresh] = true عند ضغط المستخدم على زر تحديث يدوي
+        );
 
   Future<GoldPriceModel> getGoldPrices({
     String currency = 'USD',
     bool forceRefresh = false,
   }) async {
-    final String normalizedCurrency = currency.trim().toUpperCase();
-    final String cacheKey = 'gold_price_cache_$normalizedCurrency';
+    final String targetCurrency = currency.trim().toUpperCase();
     final prefs = await SharedPreferences.getInstance();
 
-    // 1. التحقق من الكاش المحلي (لو أقل من 6 ساعات ومفيش Force Refresh)
-    if (!forceRefresh && prefs.containsKey(cacheKey)) {
-      final String? cachedRaw = prefs.getString(cacheKey);
-      if (cachedRaw != null && cachedRaw.isNotEmpty) {
-        final Map<String, dynamic> cachedMap = jsonDecode(cachedRaw);
-        final DateTime savedAt = DateTime.parse(cachedMap['lastUpdated']);
-
-        if (DateTime.now().difference(savedAt) < cacheDuration) {
-          return GoldPriceModel.fromCacheJson(cachedMap);
+    // 1. لو في raw JSON صالح في الكاش ومفيش forceRefresh، استخدمه
+    if (!forceRefresh) {
+      final String? cachedJson = prefs.getString(_rawSymbolsKey);
+      final String? cachedTimeStr = prefs.getString(_rawSymbolsTimeKey);
+      if (cachedJson != null && cachedTimeStr != null) {
+        final DateTime? savedAt = DateTime.tryParse(cachedTimeStr);
+        if (savedAt != null &&
+            DateTime.now().difference(savedAt) < cacheDuration) {
+          final Map<String, dynamic> decoded =
+          jsonDecode(cachedJson) as Map<String, dynamic>;
+          return _buildFromRaw(decoded, targetCurrency);
         }
       }
     }
 
-    // 2. جلب البيانات الجديدة من goldprice.dev عبر Dio
+    // 2. سحب جديد من السيرفر
     try {
-      final Response goldResponse = await _goldDio.get(
-        'prices',
-        queryParameters: {
-          'include': 'karat',
-        },
-      );
+      final Response response = await _goldDio.get('prices');
+      print('GOLD API STATUS: ${response.statusCode}');
+      print('GOLD API DATA: ${response.data}');
 
-      if (goldResponse.statusCode == 200 && goldResponse.data != null) {
-        final Map<String, dynamic> goldData =
-        goldResponse.data is Map<String, dynamic>
-            ? goldResponse.data as Map<String, dynamic>
-            : jsonDecode(goldResponse.data.toString());
+      if (response.statusCode == 200 && response.data != null) {
+        final Map<String, dynamic> dataMap = response.data is Map<String, dynamic>
+            ? response.data as Map<String, dynamic>
+            : jsonDecode(response.data.toString()) as Map<String, dynamic>;
 
-        // حساب معامل تحويل العملة لو العملة مش USD
-        double fxRate = 1.0;
-        if (normalizedCurrency != 'USD') {
-          fxRate = await _getUsdToCurrencyRate(normalizedCurrency);
-        }
-
-        final GoldPriceModel model = GoldPriceModel.fromApiResponse(
-          json: goldData,
-          currency: normalizedCurrency,
-          fxRate: fxRate,
-          cachedTime: DateTime.now(),
+        await prefs.setString(_rawSymbolsKey, jsonEncode(dataMap));
+        await prefs.setString(
+          _rawSymbolsTimeKey,
+          DateTime.now().toIso8601String(),
         );
 
-        // حفظ النتيجة في الكاش المحلي
-        await prefs.setString(cacheKey, jsonEncode(model.toCacheJson()));
-
-        return model;
-      } else {
-        throw Exception(
-          'تعذر جلب أسعار الذهب (رمز الحالة: ${goldResponse.statusCode})',
-        );
+        return _buildFromRaw(dataMap, targetCurrency);
       }
+
+      throw Exception('فشل تحميل البيانات (${response.statusCode})');
     } on DioException catch (e) {
-      // في حالة فشل الشبكة أو Timeout، نرجع آخر كاش متاح إن وجد
-      final GoldPriceModel? fallback = await _tryReadCache(prefs, cacheKey);
-      if (fallback != null) {
-        return fallback;
+      print('DIO ERROR: ${e.message} | RESPONSE: ${e.response?.data}');
+      final String? cachedJson = prefs.getString(_rawSymbolsKey);
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        return _buildFromRaw(
+          jsonDecode(cachedJson) as Map<String, dynamic>,
+          targetCurrency,
+        );
       }
-      throw Exception(_mapDioError(e));
-    } catch (e) {
-      final GoldPriceModel? fallback = await _tryReadCache(prefs, cacheKey);
-      if (fallback != null) {
-        return fallback;
-      }
-      rethrow;
+      throw Exception('تعذر الاتصال بالسيرفر');
     }
   }
 
-  /// جلب سعر صرف الدولار مقابل العملة المطلوبة (مثلاً USD -> EGP)
-  Future<double> _getUsdToCurrencyRate(String targetCurrency) async {
-    try {
-      final Response fxResponse = await _fxDio.get('USD');
-      if (fxResponse.statusCode == 200 && fxResponse.data != null) {
-        final Map<String, dynamic> data =
-        fxResponse.data is Map<String, dynamic>
-            ? fxResponse.data as Map<String, dynamic>
-            : jsonDecode(fxResponse.data.toString());
+  Future<GoldPriceModel> _buildFromRaw(
+      Map<String, dynamic> rawData,
+      String targetCurrency,
+      ) async {
+    double fxRate = 1.0;
+    if (targetCurrency != 'USD' && !_containsXauForCurrency(rawData, targetCurrency)) {
+      fxRate = await _fetchFxFromUsd(targetCurrency);
+    }
 
-        final dynamic rates = data['rates'];
-        if (rates is Map<String, dynamic> && rates[targetCurrency] != null) {
-          return ((rates[targetCurrency]) as num).toDouble();
+    return GoldPriceModel.fromApiResponse(
+      json: rawData,
+      currency: targetCurrency,
+      fxRate: fxRate,
+      cachedTime: DateTime.now(),
+    );
+  }
+
+  bool _containsXauForCurrency(Map<String, dynamic> rawData, String currency) {
+    final dynamic list = rawData['symbols'];
+    if (list is! List) return false;
+    for (final item in list) {
+      if (item is Map) {
+        final String sym = (item['symbol'] ?? '').toString().trim().toUpperCase();
+        final String quote =
+        (item['quote_currency'] ?? '').toString().trim().toUpperCase();
+        if (sym == 'XAU' && quote == currency) return true;
+      }
+    }
+    return false;
+  }
+
+  Future<double> _fetchFxFromUsd(String currency) async {
+    try {
+      final Response res = await _fxDio.get('USD');
+      if (res.statusCode == 200 && res.data != null) {
+        final Map<String, dynamic> map = res.data is Map<String, dynamic>
+            ? res.data as Map<String, dynamic>
+            : jsonDecode(res.data.toString()) as Map<String, dynamic>;
+        final dynamic rates = map['rates'];
+        if (rates is Map && rates[currency] != null) {
+          return ((rates[currency]) as num).toDouble();
         }
       }
-      throw Exception('العملة $targetCurrency غير متوفرة حالياً');
-    } on DioException {
-      throw Exception('تعذر تحديث سعر صرف العملة $targetCurrency');
-    }
-  }
-
-  Future<GoldPriceModel?> _tryReadCache(
-      SharedPreferences prefs,
-      String cacheKey,
-      ) async {
-    if (!prefs.containsKey(cacheKey)) return null;
-    final String? cachedRaw = prefs.getString(cacheKey);
-    if (cachedRaw == null || cachedRaw.isEmpty) return null;
-    return GoldPriceModel.fromCacheJson(jsonDecode(cachedRaw));
-  }
-
-  String _mapDioError(DioException error) {
-    switch (error.type) {
-      case DioExceptionType.connectionTimeout:
-      case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
-        return 'انتهت مهلة الاتصال بالسيرفر، حاول مرة أخرى.';
-      case DioExceptionType.connectionError:
-        return 'لا يوجد اتصال بالإنترنت حالياً.';
-      case DioExceptionType.badResponse:
-        return 'حدث خطأ من السيرفر (${error.response?.statusCode ?? ''}).';
-      default:
-        return 'حدث خطأ غير متوقع أثناء جلب الأسعار.';
+      return 1.0;
+    } catch (_) {
+      return 1.0;
     }
   }
 }

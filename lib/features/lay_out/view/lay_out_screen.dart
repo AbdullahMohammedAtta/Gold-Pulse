@@ -1,7 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_cubit.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_states.dart';
-import 'package:material_ui/material_ui.dart';
 
 // ignore: must_be_immutable
 class LayOutScreen extends StatelessWidget {

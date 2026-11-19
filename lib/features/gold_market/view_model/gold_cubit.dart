@@ -6,7 +6,7 @@ import 'gold_state.dart';
 
 class GoldCubit extends Cubit<GoldState> {
   final GoldService _goldService;
-  String _currentCurrency = 'GBP';
+  String _currentCurrency = 'EGP';
 
   GoldCubit(this._goldService) : super(const GoldInitial());
 
@@ -46,6 +46,7 @@ class GoldCubit extends Cubit<GoldState> {
           isRefreshing: false,
         ),
       );
+      print(result.priceGram24k);
     } catch (e) {
       final String cleanMessage =
       e.toString().replaceFirst('Exception: ', '').trim();
