@@ -6,7 +6,7 @@ import 'gold_state.dart';
 
 class GoldCubit extends Cubit<GoldState> {
   final GoldService _goldService;
-  String _currentCurrency = 'USD';
+  String _currentCurrency = 'GBP';
 
   GoldCubit(this._goldService) : super(const GoldInitial());
 
@@ -23,14 +23,14 @@ class GoldCubit extends Cubit<GoldState> {
 
     if (currentData != null) {
       emit(
-        GoldLoaded(
+        GetGoldSuccess(
           goldData: currentData,
           selectedCurrency: _currentCurrency,
           isRefreshing: true,
         ),
       );
     } else {
-      emit(const GoldLoading());
+      emit(const GetGoldLoading());
     }
 
     try {
@@ -40,7 +40,7 @@ class GoldCubit extends Cubit<GoldState> {
       );
 
       emit(
-        GoldLoaded(
+        GetGoldSuccess(
           goldData: result,
           selectedCurrency: _currentCurrency,
           isRefreshing: false,
@@ -52,7 +52,7 @@ class GoldCubit extends Cubit<GoldState> {
 
       if (currentData != null) {
         emit(
-          GoldLoaded(
+          GetGoldSuccess(
             goldData: currentData,
             selectedCurrency: _currentCurrency,
             isRefreshing: false,
@@ -61,7 +61,7 @@ class GoldCubit extends Cubit<GoldState> {
       }
 
       emit(
-        GoldError(
+        GetGoldError(
           message: cleanMessage.isEmpty
               ? 'حدث خطأ أثناء جلب أسعار الذهب'
               : cleanMessage,
@@ -74,7 +74,7 @@ class GoldCubit extends Cubit<GoldState> {
   /// تغيير العملة المختارة من الـ Chips في HomeScreen
   Future<void> changeCurrency(String newCurrency) async {
     final String normalized = newCurrency.trim().toUpperCase();
-    if (normalized == _currentCurrency && state is GoldLoaded) return;
+    if (normalized == _currentCurrency && state is GetGoldSuccess) return;
     await fetchGoldPrices(currency: normalized, forceRefresh: false);
   }
 
@@ -85,9 +85,9 @@ class GoldCubit extends Cubit<GoldState> {
 
   GoldPriceModel? _extractCurrentModel() {
     final currentState = state;
-    if (currentState is GoldLoaded) return currentState.goldData;
-    if (currentState is GoldLoading) return currentState.previousData;
-    if (currentState is GoldError) return currentState.previousData;
+    if (currentState is GetGoldSuccess) return currentState.goldData;
+    if (currentState is GetGoldLoading) return currentState.previousData;
+    if (currentState is GetGoldError) return currentState.previousData;
     return null;
   }
 }

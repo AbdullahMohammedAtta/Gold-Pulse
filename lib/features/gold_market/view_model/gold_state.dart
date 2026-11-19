@@ -4,28 +4,28 @@ abstract class GoldState {const GoldState();}
 
 class GoldInitial extends GoldState {const GoldInitial();}
 
-class GoldLoading extends GoldState {
+class GetGoldLoading extends GoldState {
   final GoldPriceModel? previousData;
-  const GoldLoading({this.previousData});
+  const GetGoldLoading({this.previousData});
 }
 
-class GoldLoaded extends GoldState {
+class GetGoldSuccess extends GoldState {
   final GoldPriceModel goldData;
   final String selectedCurrency;
   final bool isRefreshing;
 
-  const GoldLoaded({
+  const GetGoldSuccess({
     required this.goldData,
     required this.selectedCurrency,
     this.isRefreshing = false,
   });
 }
 
-class GoldError extends GoldState {
+class GetGoldError extends GoldState {
   final String message;
   final GoldPriceModel? previousData;
 
-  const GoldError({
+  const GetGoldError({
     required this.message,
     this.previousData,
   });

@@ -21,7 +21,7 @@ class HomeScreen extends StatelessWidget {
       body: SafeArea(
         child: BlocConsumer<GoldCubit, GoldState>(
           listener: (context, state) {
-            if (state is GoldError) {
+            if (state is GetGoldError) {
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -36,9 +36,9 @@ class HomeScreen extends StatelessWidget {
             final GoldPriceModel? goldData = _resolveGoldData(state);
             final String selectedCurrency = _resolveCurrency(context, state);
             final bool isRefreshing =
-                state is GoldLoaded && state.isRefreshing;
+                state is GetGoldSuccess && state.isRefreshing;
 
-            if (state is GoldLoading && goldData == null) {
+            if (state is GetGoldLoading && goldData == null) {
               return const Center(
                 child: CircularProgressIndicator(
                   color: Color(0xFFFFD700),
@@ -46,7 +46,7 @@ class HomeScreen extends StatelessWidget {
               );
             }
 
-            if (state is GoldError && goldData == null) {
+            if (state is GetGoldError && goldData == null) {
               return _buildInitialErrorView(context, state.message);
             }
 
@@ -538,14 +538,14 @@ class HomeScreen extends StatelessWidget {
   }
 
   GoldPriceModel? _resolveGoldData(GoldState state) {
-    if (state is GoldLoaded) return state.goldData;
-    if (state is GoldLoading) return state.previousData;
-    if (state is GoldError) return state.previousData;
+    if (state is GetGoldSuccess) return state.goldData;
+    if (state is GetGoldLoading) return state.previousData;
+    if (state is GetGoldError) return state.previousData;
     return null;
   }
 
   String _resolveCurrency(BuildContext context, GoldState state) {
-    if (state is GoldLoaded) return state.selectedCurrency;
+    if (state is GetGoldSuccess) return state.selectedCurrency;
     return context.read<GoldCubit>().currentCurrency;
   }
 
