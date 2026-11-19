@@ -1,10 +1,15 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gold/core/BlocObserver.dart';
+import 'package:gold/core/services/gold_service.dart';
 import 'package:gold/features/lay_out/view/lay_out_screen.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_cubit.dart';
+
+// عدّل مسارات الاستيراد أدناه حسب أماكن الملفات الحقيقية في مشروعك
+import 'package:gold/features/gold_market/view_model/gold_cubit.dart';
 import 'package:material_ui/material_ui.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   Bloc.observer = MyBlocObserver();
 
   runApp(const MyApp());
@@ -13,22 +18,27 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-        create: (context) => LayOutCubit(),
-        child: MaterialApp(
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<LayOutCubit>(
+          create: (context) => LayOutCubit(),
+        ),
+        BlocProvider<GoldCubit>(
+          create: (context) =>
+          GoldCubit(GoldService())..fetchGoldPrices(currency: 'GBP'),
+        ),
+      ],
+      child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Aurum Gold',
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF121215),
           primaryColor: const Color(0xFFFFD700),
         ),
-        home: LayOutScreen(),
+        home: const LayOutScreen(),
       ),
     );
   }
 }
-
-
