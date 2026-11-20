@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gold/core/theme/app_colors.dart';
 import 'package:gold/features/gold_market/model/gold_price_model.dart';
-
-// عدّل مسارات الاستيراد حسب أماكن الملفات في مشروعك
-import '../view_model/gold_cubit.dart';
-import '../view_model/gold_state.dart';
+import 'package:gold/features/gold_market/view_model/gold_cubit.dart';
+import 'package:gold/features/gold_market/view_model/gold_state.dart';
 
 class HomeScreen extends StatelessWidget {
   HomeScreen({super.key});
@@ -16,231 +15,158 @@ class HomeScreen extends StatelessWidget {
     {'code': 'GBP', 'label': 'GBP (£)', 'symbol': '£'},
     {'code': 'AED', 'label': 'AED (د.إ)', 'symbol': 'د.إ '},
   ];
+
+  String _symbolFor(String currency) {
+    for (final item in currencies) {
+      if (item['code'] == currency) return item['symbol']!;
+    }
+    return '$currency ';
+  }
+
+  String _formatPrice(double value, String currency) {
+    return '${_symbolFor(currency)}${value.toStringAsFixed(2)}';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bool isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final ThemeData theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+
+    final Color bgColor =
+    isDark ? AppColors.darkBackground : AppColors.lightBackground;
+    final Color surfaceColor =
+    isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final Color elevatedColor =
+    isDark ? AppColors.darkElevated : AppColors.lightElevated;
+    final Color primaryText =
+    isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final Color secondaryText =
+    isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final Color borderColor =
+    isDark ? AppColors.darkDivider : AppColors.lightDivider;
+    final Color accentColor = isDark ? AppColors.goldDark : AppColors.goldLight;
+    final Color selectedChipText = isDark ? Colors.black : Colors.white;
+
     return Scaffold(
+      backgroundColor: bgColor,
       body: SafeArea(
-        child: BlocConsumer<GoldCubit, GoldState>(
-          listener: (context, state) {
-            if (state is GetGoldError) {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(state.message),
-                  backgroundColor: Colors.red.shade900,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          },
+        child: BlocBuilder<GoldCubit, GoldState>(
           builder: (context, state) {
-            final GoldPriceModel? goldData = _resolveGoldData(state);
-            final String selectedCurrency = _resolveCurrency(context, state);
-            final bool isRefreshing =
-                state is GetGoldSuccess && state.isRefreshing;
+            if (state is GetGoldLoading) {
+              return Center(
+                child: CircularProgressIndicator(color: accentColor),
+              );
+            }
 
-            if (state is GetGoldLoading && goldData == null) {
-              return const Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFFFFD700),
+            if (state is GetGoldError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        state.message,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: secondaryText),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          context.read<GoldCubit>().fetchGoldPrices(
+                            forceRefresh: true,
+                          );
+                        },
+                        child: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
 
-            if (state is GetGoldError && goldData == null) {
-              return _buildInitialErrorView(context, state.message);
-            }
+            if (state is GetGoldSuccess) {
+              final GoldPriceModel gold = state.goldData;
+              final String selectedCurrency = state.selectedCurrency;
 
-            final String symbol = _currencySymbol(selectedCurrency);
-            final double ouncePrice = goldData?.priceOunce ?? 0.0;
-            final double changePct = goldData?.changePercentage ?? 0.0;
-            final double estimatedDelta = ouncePrice * (changePct / 100);
-            final bool isPositive = changePct >= 0;
-
-            final double g24 = goldData?.priceGram24k ?? 0.0;
-            final double g22 = goldData?.priceGram22k ?? 0.0;
-            final double g21 = goldData?.priceGram21k ?? 0.0;
-            final double g18 = goldData?.priceGram18k ?? 0.0;
-
-            // التولة التروية القياسية ≈ 11.6638 جرام
-            const double gramsPerTola = 11.6638;
-
-            return RefreshIndicator(
-              color: const Color(0xFFFFD700),
-              backgroundColor: const Color(0xFF1E1E24),
-              onRefresh: () => context.read<GoldCubit>().refreshPrices(),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              return RefreshIndicator(
+                color: accentColor,
+                backgroundColor: surfaceColor,
+                onRefresh: () async {
+                  await context.read<GoldCubit>().fetchGoldPrices(
+                    currency: selectedCurrency,
+                    forceRefresh: true,
+                  );
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                   children: [
-                    // --- Top Badges ---
+                    // Header + Refresh
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E1E24),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                '● LIVE LBMA SPOT',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Color(0xFFFFD700),
-                                ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isAr ? 'أسعار الذهب المباشرة' : 'Live Gold Rates',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: primaryText,
                               ),
-                              if (isRefreshing) ...[
-                                const SizedBox(width: 8),
-                                const SizedBox(
-                                  width: 10,
-                                  height: 10,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 1.5,
-                                    color: Color(0xFFFFD700),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isAr
+                                  ? 'آخر تحديث: ${_formatTime(gold.lastUpdated)}'
+                                  : 'Updated: ${_formatTime(gold.lastUpdated)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: secondaryText,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '⏱ ${_formatLastUpdated(goldData?.lastUpdated)}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
+                        IconButton(
+                          onPressed: state.isRefreshing
+                              ? null
+                              : () {
+                            context.read<GoldCubit>().fetchGoldPrices(
+                              currency: selectedCurrency,
+                              forceRefresh: true,
+                            );
+                          },
+                          icon: state.isRefreshing
+                              ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: accentColor,
+                            ),
+                          )
+                              : Icon(
+                            Icons.refresh_rounded,
+                            color: accentColor,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-
-                    // --- Global Spot Price Card ---
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF1E1E24), Color(0xFF25252D)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'GOLD SPOT PRICE (OZ / $selectedCurrency)',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              Text(
-                                'XAU/$selectedCurrency',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$symbol${_formatNumber(ouncePrice)}',
-                            style: const TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isPositive
-                                      ? const Color.fromRGBO(0, 255, 0, 0.2)
-                                      : const Color.fromRGBO(255, 0, 0, 0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '${isPositive ? '+' : ''}${changePct.toStringAsFixed(2)}% '
-                                      '(${estimatedDelta >= 0 ? '+' : '-'}$symbol${_formatNumber(estimatedDelta.abs())} today)',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: isPositive
-                                        ? Colors.green
-                                        : Colors.redAccent,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Low: $symbol${_formatNumber(ouncePrice * 0.986)}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                              const Text(
-                                'Day Range',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFFFFD700),
-                                ),
-                              ),
-                              Text(
-                                'High: $symbol${_formatNumber(ouncePrice * 1.004)}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          const LinearProgressIndicator(
-                            value: 0.7,
-                            backgroundColor: Colors.white10,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Color(0xFFFFD700),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                     const SizedBox(height: 16),
 
-                    // --- Currency Selector Chips ---
+                    // شريط العملات الأفقي (EGP افتراضي)
                     SizedBox(
                       height: 38,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
                         itemCount: currencies.length,
-                        separatorBuilder:(context, index) => const SizedBox(width: 8),
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final item = currencies[index];
                           final String code = item['code']!;
@@ -254,14 +180,15 @@ class HomeScreen extends StatelessWidget {
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 180),
                               alignment: Alignment.center,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFFFFD700)
-                                    : const Color(0xFF1E1E24),
+                                color: isSelected ? accentColor : surfaceColor,
                                 borderRadius: BorderRadius.circular(20),
                                 border: Border.all(
-                                  color: isSelected ? const Color(0xFFFFD700) : Colors.white10,
+                                  color: isSelected ? accentColor : borderColor,
                                 ),
                               ),
                               child: Text(
@@ -271,7 +198,9 @@ class HomeScreen extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.black : Colors.white70,
+                                  color: isSelected
+                                      ? selectedChipText
+                                      : secondaryText,
                                 ),
                               ),
                             ),
@@ -279,320 +208,424 @@ class HomeScreen extends StatelessWidget {
                         },
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
 
-                    // --- Karat Rates Header ---
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text(
-                          '⭐ Karat Rates',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        Text(
-                          '● PER GRAM',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFFFFD700),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // --- Karat Items List ---
-                    _buildKaratCard(
-                      '24K',
-                      'Pure Gold',
-                      '99.9% Purity • Investment Bullion',
-                      '$symbol${_formatNumber(g24)}',
-                      'Tola: $symbol${_formatNumber(g24 * gramsPerTola)}',
-                      _formatDailyChange(g24, changePct, symbol),
-                      isPositive: isPositive,
-                    ),
-                    _buildKaratCard(
-                      '22K',
-                      '91.6% Purity',
-                      'Sovereign & Eastern Ornaments',
-                      '$symbol${_formatNumber(g22)}',
-                      'Tola: $symbol${_formatNumber(g22 * gramsPerTola)}',
-                      _formatDailyChange(g22, changePct, symbol),
-                      isPositive: isPositive,
-                    ),
-                    _buildKaratCard(
-                      '21K',
-                      'Most Popular Jewelry',
-                      '87.5% Standard • Bridal & Modern',
-                      '$symbol${_formatNumber(g21)}',
-                      'Tola: $symbol${_formatNumber(g21 * gramsPerTola)}',
-                      _formatDailyChange(g21, changePct, symbol),
-                      isPositive: isPositive,
-                    ),
-                    _buildKaratCard(
-                      '18K',
-                      '75.0% Fine',
-                      'European Standard & Gem Settings',
-                      '$symbol${_formatNumber(g18)}',
-                      'Tola: $symbol${_formatNumber(g18 * gramsPerTola)}',
-                      _formatDailyChange(g18, changePct, symbol),
-                      isPositive: isPositive,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // --- Weight Calculator Button ---
+                    // كارت سعر الأونصة الرئيسي
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E1E24),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white10),
+                        color: surfaceColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: borderColor),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(
-                                Icons.calculate,
-                                color: Color(0xFFFFD700),
+                              Text(
+                                isAr
+                                    ? 'سعر الأونصة (تروي)'
+                                    : 'GOLD SPOT (TROY OZ)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  letterSpacing: 0.6,
+                                  color: secondaryText,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
-                                    'Weight Calculator',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: accentColor.withOpacity(0.14),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  'XAU / $selectedCurrency',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: accentColor,
                                   ),
-                                  Text(
-                                    'Estimate physical bullion value',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                             ],
                           ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFFD700),
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onPressed: () {},
-                            child: const Text(
-                              'Convert',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                          const SizedBox(height: 12),
+                          Text(
+                            _formatPrice(gold.priceOunce, selectedCurrency),
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.bold,
+                              color: primaryText,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 22),
+
+                    // عنوان العيارات
+                    Text(
+                      isAr ? 'أسعار الجرام حسب العيار' : 'Karat Rates (Per Gram)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    _KaratTile(
+                      karatLabel: '24K',
+                      subtitle: isAr ? 'ذهب نقي (99.9%)' : 'Pure Gold (99.9%)',
+                      priceText:
+                      _formatPrice(gold.priceGram24k, selectedCurrency),
+                      perGramText: isAr ? '/ جرام' : '/ gram',
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      accentColor: accentColor,
+                      primaryText: primaryText,
+                      secondaryText: secondaryText,
+                    ),
+                    const SizedBox(height: 10),
+                    _KaratTile(
+                      karatLabel: '21K',
+                      subtitle: isAr
+                          ? 'الأكثر تداولاً للمشغولات'
+                          : 'Most Popular Jewelry',
+                      priceText:
+                      _formatPrice(gold.priceGram21k, selectedCurrency),
+                      perGramText: isAr ? '/ جرام' : '/ gram',
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      accentColor: accentColor,
+                      primaryText: primaryText,
+                      secondaryText: secondaryText,
+                    ),
+                    const SizedBox(height: 10),
+                    _KaratTile(
+                      karatLabel: '18K',
+                      subtitle: isAr
+                          ? 'مشغولات عصرية (75%)'
+                          : 'Modern Standard (75%)',
+                      priceText:
+                      _formatPrice(gold.priceGram18k, selectedCurrency),
+                      perGramText: isAr ? '/ جرام' : '/ gram',
+                      surfaceColor: surfaceColor,
+                      borderColor: borderColor,
+                      accentColor: accentColor,
+                      primaryText: primaryText,
+                      secondaryText: secondaryText,
+                    ),
                     const SizedBox(height: 20),
+
+                    // حاسبة الوزن
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: surfaceColor,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: accentColor.withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.calculate_outlined,
+                              color: accentColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isAr ? 'حاسبة الوزن' : 'Weight Calculator',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryText,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isAr
+                                      ? 'احسب قيمة وزن معين بالجرام'
+                                      : 'Estimate value by gram weight',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: secondaryText,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => _openCalculatorSheet(
+                              context,
+                              gold: gold,
+                              currency: selectedCurrency,
+                              isAr: isAr,
+                              isDark: isDark,
+                              surfaceColor: surfaceColor,
+                              elevatedColor: elevatedColor,
+                              borderColor: borderColor,
+                              accentColor: accentColor,
+                              primaryText: primaryText,
+                              secondaryText: secondaryText,
+                              selectedChipText: selectedChipText,
+                            ),
+                            child: Text(
+                              isAr ? 'احسب' : 'Convert',
+                              style:
+                              const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              ),
-            );
+              );
+            }
+
+            return const SizedBox.shrink();
           },
         ),
       ),
     );
   }
 
-  Widget _buildInitialErrorView(BuildContext context, String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.wifi_off_rounded,
-              color: Color(0xFFFFD700),
-              size: 48,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFFD700),
-                foregroundColor: Colors.black,
-              ),
-              onPressed: () => context.read<GoldCubit>().refreshPrices(),
-              child: const Text(
-                'Retry',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  String _formatTime(DateTime dt) {
+    final String hh = dt.hour.toString().padLeft(2, '0');
+    final String mm = dt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
   }
 
-  Widget _buildKaratCard(
-      String karat,
-      String badge,
-      String subtitle,
-      String price,
-      String tola,
-      String change, {
-        required bool isPositive,
+  void _openCalculatorSheet(
+      BuildContext context, {
+        required GoldPriceModel gold,
+        required String currency,
+        required bool isAr,
+        required bool isDark,
+        required Color surfaceColor,
+        required Color elevatedColor,
+        required Color borderColor,
+        required Color accentColor,
+        required Color primaryText,
+        required Color secondaryText,
+        required Color selectedChipText,
       }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E24),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+    final TextEditingController gramsController =
+    TextEditingController(text: '10');
+    String selectedKarat = '21K';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: surfaceColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final double grams = double.tryParse(gramsController.text) ?? 0.0;
+            double ratePerGram = gold.priceGram21k;
+            if (selectedKarat == '24K') ratePerGram = gold.priceGram24k;
+            if (selectedKarat == '18K') ratePerGram = gold.priceGram18k;
+
+            final double total = grams * ratePerGram;
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    karat,
-                    style: const TextStyle(
+                    isAr ? 'حاسبة قيمة الذهب' : 'Gold Value Calculator',
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: primaryText,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: gramsController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white10,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      badge,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: Color(0xFFFFD700),
+                    style: TextStyle(color: primaryText),
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: InputDecoration(
+                      labelText: isAr ? 'الوزن بالجرام' : 'Weight (grams)',
+                      labelStyle: TextStyle(color: secondaryText),
+                      filled: true,
+                      fillColor: elevatedColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
                       ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: ['24K', '21K', '18K'].map((karat) {
+                      final bool active = selectedKarat == karat;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: ChoiceChip(
+                            label: Text(karat),
+                            selected: active,
+                            selectedColor: accentColor,
+                            labelStyle: TextStyle(
+                              color: active ? selectedChipText : primaryText,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            backgroundColor: elevatedColor,
+                            side: BorderSide(
+                              color: active ? accentColor : borderColor,
+                            ),
+                            onSelected: (_) {
+                              setModalState(() => selectedKarat = karat);
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: elevatedColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          isAr ? 'الإجمالي المتوقع' : 'Estimated Total',
+                          style: TextStyle(color: secondaryText),
+                        ),
+                        Text(
+                          _formatPrice(total, currency),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: accentColor,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _KaratTile extends StatelessWidget {
+  final String karatLabel;
+  final String subtitle;
+  final String priceText;
+  final String perGramText;
+  final Color surfaceColor;
+  final Color borderColor;
+  final Color accentColor;
+  final Color primaryText;
+  final Color secondaryText;
+
+  const _KaratTile({
+    required this.karatLabel,
+    required this.subtitle,
+    required this.priceText,
+    required this.perGramText,
+    required this.surfaceColor,
+    required this.borderColor,
+    required this.accentColor,
+    required this.primaryText,
+    required this.secondaryText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              karatLabel,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: accentColor,
               ),
-              const SizedBox(height: 4),
-              Text(
-                tola,
-                style: const TextStyle(fontSize: 11, color: Colors.white70),
-              ),
-            ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              subtitle,
+              style: TextStyle(fontSize: 13, color: secondaryText),
+            ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                price,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const Text(
-                '/ gram',
-                style: TextStyle(fontSize: 10, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                change,
+                priceText,
                 style: TextStyle(
-                  fontSize: 11,
-                  color: isPositive ? Colors.green : Colors.redAccent,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: primaryText,
                 ),
+              ),
+              Text(
+                perGramText,
+                style: TextStyle(fontSize: 11, color: secondaryText),
               ),
             ],
           ),
         ],
       ),
     );
-  }
-
-  GoldPriceModel? _resolveGoldData(GoldState state) {
-    if (state is GetGoldSuccess) return state.goldData;
-    if (state is GetGoldLoading) return state.previousData;
-    if (state is GetGoldError) return state.previousData;
-    return null;
-  }
-
-  String _resolveCurrency(BuildContext context, GoldState state) {
-    if (state is GetGoldSuccess) return state.selectedCurrency;
-    return context.read<GoldCubit>().currentCurrency;
-  }
-
-  String _currencySymbol(String code) {
-    switch (code.toUpperCase()) {
-      case 'EUR':
-        return '€';
-      case 'GBP':
-        return '£';
-      case 'AED':
-        return 'د.إ ';
-      case 'EGP':
-        return 'ج.م ';
-      case 'USD':
-      default:
-        return '\$';
-    }
-  }
-
-  String _formatNumber(double value) {
-    final bool isNegative = value < 0;
-    final String fixed = value.abs().toStringAsFixed(2);
-    final List<String> parts = fixed.split('.');
-    final String intPart = parts[0].replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-          (match) => ',',
-    );
-    return '${isNegative ? '-' : ''}$intPart.${parts[1]}';
-  }
-
-  String _formatDailyChange(double gramPrice, double chp, String symbol) {
-    final double diff = gramPrice * (chp / 100);
-    final String sign = diff >= 0 ? '+ ' : '- ';
-    return '$sign$symbol${_formatNumber(diff.abs())} today';
-  }
-
-  String _formatLastUpdated(DateTime? lastUpdated) {
-    if (lastUpdated == null) return 'Updated just now';
-    final Duration diff = DateTime.now().difference(lastUpdated);
-    if (diff.inMinutes < 1) return 'Updated just now';
-    if (diff.inMinutes < 60) return 'Updated ${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return 'Updated ${diff.inHours}h ago';
-    return 'Updated ${diff.inDays}d ago';
   }
 }

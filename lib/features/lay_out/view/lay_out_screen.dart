@@ -1,21 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gold/core/theme/app_colors.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_cubit.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_states.dart';
 
-// ignore: must_be_immutable
 class LayOutScreen extends StatelessWidget {
   const LayOutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    var layOutCubit = LayOutCubit.get(context);
+    final layOutCubit = LayOutCubit.get(context);
+    final bool isAr = Localizations.localeOf(context).languageCode == 'ar';
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return BlocConsumer<LayOutCubit,LayOutStates>(
+    final Color bgColor =
+    isDark ? AppColors.darkBackground : AppColors.lightBackground;
+    final Color surfaceColor =
+    isDark ? AppColors.darkSurface : AppColors.lightSurface;
+    final Color elevatedColor =
+    isDark ? AppColors.darkElevated : AppColors.lightElevated;
+    final Color primaryText =
+    isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
+    final Color secondaryText =
+    isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary;
+    final Color borderColor =
+    isDark ? AppColors.darkDivider : AppColors.lightDivider;
+    final Color accentColor = isDark ? AppColors.goldDark : AppColors.goldLight;
+    final Color accentIconColor = isDark ? Colors.black : Colors.white;
+
+    return BlocConsumer<LayOutCubit, LayOutStates>(
       listener: (context, state) {},
       builder: (context, state) {
         return Scaffold(
+          backgroundColor: bgColor,
           appBar: AppBar(
+            backgroundColor: bgColor,
+            foregroundColor: primaryText,
+            elevation: 0,
+            scrolledUnderElevation: 0,
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -24,22 +46,22 @@ class LayOutScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFD700),
+                        color: accentColor,
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.flash_on,
-                        color: Colors.black,
+                        color: accentIconColor,
                         size: 18,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text(
+                    Text(
                       'Aurum',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: primaryText,
                       ),
                     ),
                   ],
@@ -52,33 +74,35 @@ class LayOutScreen extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black26,
+                        color: elevatedColor,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white12),
+                        border: Border.all(color: borderColor),
                       ),
                       child: Row(
-                        children: const [
+                        children: [
                           CircleAvatar(
                             radius: 4,
-                            backgroundColor: Colors.amber,
+                            backgroundColor: accentColor,
                           ),
-                          SizedBox(width: 6),
+                          const SizedBox(width: 6),
                           Text(
                             'LIVE',
                             style: TextStyle(
                               fontSize: 10,
-                              color: Colors.white70,
+                              fontWeight: FontWeight.bold,
+                              color: secondaryText,
                             ),
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 16,
-                      backgroundImage: NetworkImage(
+                      backgroundColor: elevatedColor,
+                      backgroundImage: const NetworkImage(
                         'https://i.imgur.com/BoN9kdC.png',
-                      ), // صورة افتراضية للمستخدم
+                      ),
                     ),
                   ],
                 ),
@@ -86,30 +110,46 @@ class LayOutScreen extends StatelessWidget {
             ),
           ),
           body: layOutCubit.screens[layOutCubit.screensIndex],
-          bottomNavigationBar: BottomNavigationBar(
-            currentIndex: layOutCubit.screensIndex,
-            onTap: (value) {
-              layOutCubit.changeScreen(value);
-            },
-            backgroundColor: const Color(0xFF121215),
-            selectedItemColor: const Color(0xFFFFD700),
-            unselectedItemColor: Colors.grey,
-            type: BottomNavigationBarType.fixed,
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.show_chart),
-                label: 'Chart',
+          bottomNavigationBar: Container(
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              border: Border(
+                top: BorderSide(color: borderColor, width: 0.8),
               ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.account_balance_wallet),
-                label: 'Portfolio',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.settings),
-                label: 'Settings',
-              ),
-            ],
+            ),
+            child: BottomNavigationBar(
+              currentIndex: layOutCubit.screensIndex,
+              onTap: (value) {
+                layOutCubit.changeScreen(value);
+              },
+              backgroundColor: surfaceColor,
+              selectedItemColor: accentColor,
+              unselectedItemColor: secondaryText,
+              type: BottomNavigationBarType.fixed,
+              elevation: 0,
+              items: [
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.home_outlined),
+                  activeIcon: const Icon(Icons.home),
+                  label: isAr ? 'الرئيسية' : 'Home',
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.show_chart_outlined),
+                  activeIcon: const Icon(Icons.show_chart),
+                  label: isAr ? 'المؤشر' : 'Chart',
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.account_balance_wallet_outlined),
+                  activeIcon: const Icon(Icons.account_balance_wallet),
+                  label: isAr ? 'المحفظة' : 'Portfolio',
+                ),
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.settings_outlined),
+                  activeIcon: const Icon(Icons.settings),
+                  label: isAr ? 'الإعدادات' : 'Settings',
+                ),
+              ],
+            ),
           ),
         );
       },

@@ -58,5 +58,12 @@ ThemeData buildDarkTheme() {
         ),
       ),
     ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.darkSurface,
+      selectedItemColor: AppColors.goldDark,
+      unselectedItemColor: AppColors.darkTextSecondary,
+      type: BottomNavigationBarType.fixed,
+      elevation: 0,
+    ),
   );
 }
