@@ -55,9 +55,28 @@ class SettingScreen extends StatelessWidget {
                       child: _OptionTile(
                         title: 'العربية',
                         subtitle: 'Arabic',
-                        icon: Icons.translate,
                         isSelected: isAr,
                         accent: accent,
+                        customBadge: Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isAr ? accent.withOpacity(0.16) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isAr ? accent : Theme.of(context).dividerColor,
+                            ),
+                          ),
+                          child: Text(
+                            'ع',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: isAr ? accent : Theme.of(context).iconTheme.color,
+                            ),
+                          ),
+                        ),
                         onTap: () {
                           context.read<SettingsCubit>().changeLanguage('ar');
                         },
@@ -156,7 +175,8 @@ class SettingScreen extends StatelessWidget {
 class _OptionTile extends StatelessWidget {
   final String title;
   final String subtitle;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customBadge;
   final bool isSelected;
   final Color accent;
   final VoidCallback onTap;
@@ -164,11 +184,13 @@ class _OptionTile extends StatelessWidget {
   const _OptionTile({
     required this.title,
     required this.subtitle,
-    required this.icon,
+    this.icon,
+    this.customBadge,
     required this.isSelected,
     required this.accent,
     required this.onTap,
-  });
+  }) : assert(icon != null || customBadge != null,
+  'Provide either icon or customBadge');
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +209,13 @@ class _OptionTile extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              size: 20,
-              color: isSelected ? accent : Theme.of(context).iconTheme.color,
-            ),
+            customBadge ??
+                Icon(
+                  icon!,
+                  size: 20,
+                  color:
+                  isSelected ? accent : Theme.of(context).iconTheme.color,
+                ),
             const SizedBox(height: 6),
             Text(
               title,
