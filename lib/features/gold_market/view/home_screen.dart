@@ -285,98 +285,17 @@ class HomeScreen extends StatelessWidget {
                           const SizedBox(height: 14),
 
                           // شريط أعلى وأقل قيمة
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: elevatedColor,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: borderColor),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.arrow_upward_rounded,
-                                        size: 16,
-                                        color: Colors.green,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            isAr ? 'أعلى قيمة' : 'High',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: secondaryText,
-                                            ),
-                                          ),
-                                          Text(
-                                            _formatPrice(
-                                              highPrice,
-                                              selectedCurrency,
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.bold,
-                                              color: primaryText,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  width: 1,
-                                  height: 28,
-                                  color: borderColor,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.arrow_downward_rounded,
-                                        size: 16,
-                                        color: Colors.redAccent,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            isAr ? 'أقل قيمة' : 'Low',
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: secondaryText,
-                                            ),
-                                          ),
-                                          Text(
-                                            _formatPrice(
-                                              lowPrice,
-                                              selectedCurrency,
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.bold,
-                                              color: primaryText,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+                          const SizedBox(height: 16),
+                          _buildDayRangeBar(
+                            currentPrice: gold.priceOunce,
+                            lowPrice: lowPrice,
+                            highPrice: highPrice,
+                            selectedCurrency: selectedCurrency,
+                            isAr: isAr,
+                            accentColor: accentColor,
+                            borderColor: borderColor,
+                            primaryText: primaryText,
+                            secondaryText: secondaryText,
                           ),
                         ],
                       ),
@@ -541,7 +460,89 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+  Widget _buildDayRangeBar({
+    required double currentPrice,
+    required double lowPrice,
+    required double highPrice,
+    required String selectedCurrency,
+    required bool isAr,
+    required Color accentColor,
+    required Color borderColor,
+    required Color primaryText,
+    required Color secondaryText,
+  }) {
+    final double range = highPrice - lowPrice;
+    final double progress = range > 0
+        ? ((currentPrice - lowPrice) / range).clamp(0.0, 1.0)
+        : 0.5;
 
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 12, color: secondaryText),
+                children: [
+                  TextSpan(text: isAr ? 'الأقل: ' : 'Low: '),
+                  TextSpan(
+                    text: _formatPrice(lowPrice, selectedCurrency),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: primaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              isAr ? 'نطاق اليوم' : 'Day Range',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: accentColor,
+              ),
+            ),
+            RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 12, color: secondaryText),
+                children: [
+                  TextSpan(text: isAr ? 'الأعلى: ' : 'High: '),
+                  TextSpan(
+                    text: _formatPrice(highPrice, selectedCurrency),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: primaryText,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            height: 6,
+            width: double.infinity,
+            color: borderColor,
+            child: FractionallySizedBox(
+              alignment: AlignmentDirectional.centerStart,
+              widthFactor: progress,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: accentColor,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
   String _formatTime(DateTime dt) {
     final String hh = dt.hour.toString().padLeft(2, '0');
     final String mm = dt.minute.toString().padLeft(2, '0');
@@ -561,6 +562,10 @@ class HomeScreen extends StatelessWidget {
         required Color secondaryText,
         required Color selectedChipText,
       }) {
+    final TextEditingController gramsController =
+    TextEditingController(text: '10');
+    String selectedKarat = '21K';
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -569,21 +574,115 @@ class HomeScreen extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (sheetContext) {
-        return _GoldCalculatorSheet(
-          gold: gold,
-          currency: currency,
-          isAr: isAr,
-          elevatedColor: elevatedColor,
-          borderColor: borderColor,
-          accentColor: accentColor,
-          primaryText: primaryText,
-          secondaryText: secondaryText,
-          selectedChipText: selectedChipText,
-          rateForKarat: (karat) => _rateForKarat(gold, karat),
-          formatPrice: (value) => _formatPrice(value, currency),
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final double grams = double.tryParse(gramsController.text) ?? 0.0;
+            final double ratePerGram = _rateForKarat(gold, selectedKarat);
+            final double total = grams * ratePerGram;
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isAr ? 'حاسبة قيمة الذهب' : 'Gold Value Calculator',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: primaryText,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: gramsController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: TextStyle(color: primaryText),
+                    onChanged: (_) => setModalState(() {}),
+                    decoration: InputDecoration(
+                      labelText: isAr ? 'الوزن بالجرام' : 'Weight (grams)',
+                      labelStyle: TextStyle(color: secondaryText),
+                      filled: true,
+                      fillColor: elevatedColor,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: ['24K', '22K', '21K', '18K'].map((karat) {
+                      final bool active = selectedKarat == karat;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: ChoiceChip(
+                            label: Text(karat),
+                            selected: active,
+                            selectedColor: accentColor,
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              color: active ? selectedChipText : primaryText,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            backgroundColor: elevatedColor,
+                            side: BorderSide(
+                              color: active ? accentColor : borderColor,
+                            ),
+                            onSelected: (_) {
+                              setModalState(() => selectedKarat = karat);
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: elevatedColor,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: borderColor),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          isAr ? 'الإجمالي المتوقع' : 'Estimated Total',
+                          style: TextStyle(color: secondaryText),
+                        ),
+                        Text(
+                          _formatPrice(total, currency),
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: accentColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
-    );
+    ).whenComplete(() => gramsController.dispose());
   }
 }
 
@@ -658,154 +757,6 @@ class _KaratTile extends StatelessWidget {
                 style: TextStyle(fontSize: 11, color: secondaryText),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-class _GoldCalculatorSheet extends StatefulWidget {
-  final GoldPriceModel gold;
-  final String currency;
-  final bool isAr;
-  final Color elevatedColor;
-  final Color borderColor;
-  final Color accentColor;
-  final Color primaryText;
-  final Color secondaryText;
-  final Color selectedChipText;
-  final double Function(String karat) rateForKarat;
-  final String Function(double value) formatPrice;
-
-  const _GoldCalculatorSheet({
-    required this.gold,
-    required this.currency,
-    required this.isAr,
-    required this.elevatedColor,
-    required this.borderColor,
-    required this.accentColor,
-    required this.primaryText,
-    required this.secondaryText,
-    required this.selectedChipText,
-    required this.rateForKarat,
-    required this.formatPrice,
-  });
-
-  @override
-  State<_GoldCalculatorSheet> createState() => _GoldCalculatorSheetState();
-}
-
-class _GoldCalculatorSheetState extends State<_GoldCalculatorSheet> {
-  late final TextEditingController _gramsController;
-  String _selectedKarat = '21K';
-
-  @override
-  void initState() {
-    super.initState();
-    _gramsController = TextEditingController(text: '10');
-  }
-
-  @override
-  void dispose() {
-    _gramsController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final double grams = double.tryParse(_gramsController.text) ?? 0.0;
-    final double ratePerGram = widget.rateForKarat(_selectedKarat);
-    final double total = grams * ratePerGram;
-    final double bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            widget.isAr ? 'حاسبة قيمة الذهب' : 'Gold Value Calculator',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: widget.primaryText,
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _gramsController,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: TextStyle(color: widget.primaryText),
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: widget.isAr ? 'الوزن بالجرام' : 'Weight (grams)',
-              labelStyle: TextStyle(color: widget.secondaryText),
-              filled: true,
-              fillColor: widget.elevatedColor,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: widget.borderColor),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: widget.borderColor),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: ['24K', '22K', '21K', '18K'].map((karat) {
-              final bool active = _selectedKarat == karat;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: ChoiceChip(
-                    label: Text(karat),
-                    selected: active,
-                    selectedColor: widget.accentColor,
-                    labelStyle: TextStyle(
-                      fontSize: 12,
-                      color: active ? widget.selectedChipText : widget.primaryText,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    backgroundColor: widget.elevatedColor,
-                    side: BorderSide(
-                      color: active ? widget.accentColor : widget.borderColor,
-                    ),
-                    onSelected: (_) {
-                      setState(() => _selectedKarat = karat);
-                    },
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: widget.elevatedColor,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: widget.borderColor),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  widget.isAr ? 'الإجمالي المتوقع' : 'Estimated Total',
-                  style: TextStyle(color: widget.secondaryText),
-                ),
-                Text(
-                  widget.formatPrice(total),
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: widget.accentColor,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
