@@ -14,13 +14,6 @@ class SettingScreen extends StatelessWidget {
     final accent = theme.colorScheme.primary;
 
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-        title: Text(
-          isAr ? 'الإعدادات' : 'Settings',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
