@@ -240,7 +240,7 @@ class HomeScreen extends StatelessWidget {
                         scrollDirection: Axis.horizontal,
                         physics: const BouncingScrollPhysics(),
                         itemCount: currencies.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        separatorBuilder:(context, index) => const SizedBox(width: 8),
                         itemBuilder: (context, index) {
                           final item = currencies[index];
                           final String code = item['code']!;
