@@ -1,5 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:gold/features/gold_market/view/chart_screen.dart';
+import 'package:gold/features/chart/view/chart_screen.dart';
 import 'package:gold/features/gold_market/view/home_screen.dart';
 import 'package:gold/features/lay_out/view_model/lay_out_states.dart';
 import 'package:gold/features/portfolio/view/portfolio_screen.dart';

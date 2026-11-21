@@ -1,8 +1,7 @@
-// lib/features/chart/view_model/chart_cubit.dart
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gold/core/services/chart_service.dart';
 import 'package:gold/features/chart/model/gold_bar_model.dart';
-import 'package:gold/features/chart/service/chart_service.dart';
 import 'package:gold/features/chart/view_model/chart_state.dart';
 
 class ChartCubit extends Cubit<ChartState> {
@@ -10,6 +9,7 @@ class ChartCubit extends Cubit<ChartState> {
 
   ChartRange _currentRange = ChartRange.month;
   String _currentCurrency = 'USD';
+  double? _currentFxRate;
 
   ChartCubit({ChartService? service})
       : _service = service ?? ChartService(),
@@ -17,13 +17,13 @@ class ChartCubit extends Cubit<ChartState> {
 
   ChartRange get currentRange => _currentRange;
   String get currentCurrency => _currentCurrency;
+  double? get currentFxRate => _currentFxRate;
 
   int _daysForRange(ChartRange range) {
     switch (range) {
       case ChartRange.week:
         return 7;
       case ChartRange.month:
-      // حد الخطة المجانية 30 يوم
         return 30;
       case ChartRange.quarter:
         return 90;
@@ -37,6 +37,11 @@ class ChartCubit extends Cubit<ChartState> {
   }) async {
     if (range != null) _currentRange = range;
     if (currency != null) _currentCurrency = currency;
+    if (fxRateToCurrency != null) {
+      _currentFxRate = fxRateToCurrency;
+    } else if (_currentCurrency == 'USD') {
+      _currentFxRate = 1.0;
+    }
 
     emit(ChartLoading());
 
@@ -58,20 +63,24 @@ class ChartCubit extends Cubit<ChartState> {
         return;
       }
 
-      final double multiplier =
-      (_currentCurrency == 'USD' || fxRateToCurrency == null)
-          ? 1.0
-          : fxRateToCurrency;
+      final bool applyFx = _currentCurrency != 'USD' &&
+          _currentFxRate != null &&
+          _currentFxRate! > 0;
+      final double multiplier = applyFx ? _currentFxRate! : 1.0;
+      final String effectiveCurrency = applyFx ? _currentCurrency : 'USD';
 
-      final List<GoldBarModel> convertedBars = rawBars.map((bar) {
-        return GoldBarModel(
-          date: bar.date,
-          open: bar.open * multiplier,
-          high: bar.high * multiplier,
-          low: bar.low * multiplier,
-          close: bar.close * multiplier,
+      final List<GoldBarModel> convertedBars = [];
+      for (final bar in rawBars) {
+        convertedBars.add(
+          GoldBarModel(
+            date: bar.date,
+            open: bar.open * multiplier,
+            high: bar.high * multiplier,
+            low: bar.low * multiplier,
+            close: bar.close * multiplier,
+          ),
         );
-      }).toList();
+      }
 
       double high = convertedBars.first.high;
       double low = convertedBars.first.low;
@@ -91,10 +100,11 @@ class ChartCubit extends Cubit<ChartState> {
         ChartLoaded(
           bars: convertedBars,
           range: _currentRange,
-          currency: _currentCurrency,
+          currency: effectiveCurrency,
           periodHigh: high,
           periodLow: low,
           changePercent: changePercent,
+          isConvertedByCurrentFx: applyFx,
         ),
       );
     } on DioException catch (e) {

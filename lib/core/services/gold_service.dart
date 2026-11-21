@@ -74,7 +74,7 @@ class GoldService {
           DateTime.now().toIso8601String(),
         );
 
-        return _buildFromRaw(dataMap, targetCurrency);
+        return await _buildFromRaw(dataMap, targetCurrency);
       }
 
       throw Exception('فشل تحميل البيانات (${response.statusCode})');

@@ -54,10 +54,12 @@ class ChartService {
       }
     }
 
-    final bars = rawList
-        .whereType>()
-        .map(GoldBarModel.fromJson)
-        .toList();
+    final List<GoldBarModel> bars = [];
+    for (final item in rawList) {
+      if (item is Map<String, dynamic>) {
+        bars.add(GoldBarModel.fromJson(item));
+      }
+    }
 
     bars.sort((a, b) => a.date.compareTo(b.date));
     return bars;

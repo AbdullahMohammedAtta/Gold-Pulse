@@ -1,4 +1,3 @@
-// lib/features/chart/view_model/chart_state.dart
 import 'package:gold/features/chart/model/gold_bar_model.dart';
 
 enum ChartRange { week, month, quarter }
@@ -16,6 +15,7 @@ class ChartLoaded extends ChartState {
   final double periodHigh;
   final double periodLow;
   final double changePercent;
+  final bool isConvertedByCurrentFx;
 
   ChartLoaded({
     required this.bars,
@@ -24,6 +24,7 @@ class ChartLoaded extends ChartState {
     required this.periodHigh,
     required this.periodLow,
     required this.changePercent,
+    required this.isConvertedByCurrentFx,
   });
 }
 
