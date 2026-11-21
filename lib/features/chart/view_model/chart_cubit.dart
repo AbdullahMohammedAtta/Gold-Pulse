@@ -5,10 +5,13 @@ import 'package:gold/features/chart/model/gold_bar_model.dart';
 import 'package:gold/features/chart/view_model/chart_state.dart';
 
 class ChartCubit extends Cubit<ChartState> {
+  static const double _gramsPerTroyOunce = 31.1034768;
+
   final ChartService _service;
 
   ChartRange _currentRange = ChartRange.month;
-  String _currentCurrency = 'USD';
+  int _currentKarat = 21;
+  String _currentCurrency = 'EGP';
   double? _currentFxRate;
 
   ChartCubit({ChartService? service})
@@ -16,6 +19,7 @@ class ChartCubit extends Cubit<ChartState> {
         super(ChartInitial());
 
   ChartRange get currentRange => _currentRange;
+  int get currentKarat => _currentKarat;
   String get currentCurrency => _currentCurrency;
   double? get currentFxRate => _currentFxRate;
 
@@ -30,17 +34,35 @@ class ChartCubit extends Cubit<ChartState> {
     }
   }
 
+  double _karatFactor(int karat) {
+    switch (karat) {
+      case 24:
+        return 24.0 / 24.0;
+      case 18:
+        return 18.0 / 24.0;
+      case 21:
+      default:
+        return 21.0 / 24.0;
+    }
+  }
+
   Future<void> loadChart({
     ChartRange? range,
+    int? karat,
     String? currency,
     double? fxRateToCurrency,
   }) async {
     if (range != null) _currentRange = range;
-    if (currency != null) _currentCurrency = currency;
-    if (fxRateToCurrency != null) {
-      _currentFxRate = fxRateToCurrency;
-    } else if (_currentCurrency == 'USD') {
+    if (karat != null && (karat == 24 || karat == 21 || karat == 18)) {
+      _currentKarat = karat;
+    }
+    if (currency != null && currency.trim().isNotEmpty) {
+      _currentCurrency = currency.trim().toUpperCase();
+    }
+    if (_currentCurrency == 'USD') {
       _currentFxRate = 1.0;
+    } else if (fxRateToCurrency != null && fxRateToCurrency > 0) {
+      _currentFxRate = fxRateToCurrency;
     }
 
     emit(ChartLoading());
@@ -63,21 +85,27 @@ class ChartCubit extends Cubit<ChartState> {
         return;
       }
 
-      final bool applyFx = _currentCurrency != 'USD' &&
-          _currentFxRate != null &&
-          _currentFxRate! > 0;
-      final double multiplier = applyFx ? _currentFxRate! : 1.0;
-      final String effectiveCurrency = applyFx ? _currentCurrency : 'USD';
+      final bool isUsd = _currentCurrency == 'USD';
+      final bool hasValidFx =
+          !isUsd && _currentFxRate != null && _currentFxRate! > 0;
+      final double fxMultiplier =
+      isUsd ? 1.0 : (hasValidFx ? _currentFxRate! : 1.0);
+      final String effectiveCurrency =
+      (isUsd || hasValidFx) ? _currentCurrency : 'USD';
+
+      // تحويل من سعر الأونصة إلى سعر الجرام للعيار المختار
+      final double gramMultiplier =
+          (fxMultiplier / _gramsPerTroyOunce) * _karatFactor(_currentKarat);
 
       final List<GoldBarModel> convertedBars = [];
       for (final bar in rawBars) {
         convertedBars.add(
           GoldBarModel(
             date: bar.date,
-            open: bar.open * multiplier,
-            high: bar.high * multiplier,
-            low: bar.low * multiplier,
-            close: bar.close * multiplier,
+            open: bar.open * gramMultiplier,
+            high: bar.high * gramMultiplier,
+            low: bar.low * gramMultiplier,
+            close: bar.close * gramMultiplier,
           ),
         );
       }
@@ -104,7 +132,7 @@ class ChartCubit extends Cubit<ChartState> {
           periodHigh: high,
           periodLow: low,
           changePercent: changePercent,
-          isConvertedByCurrentFx: applyFx,
+          isConvertedByCurrentFx: hasValidFx,
         ),
       );
     } on DioException catch (e) {

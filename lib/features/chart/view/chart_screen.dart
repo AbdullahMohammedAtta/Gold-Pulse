@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gold/core/services/price_alert_service.dart';
+import 'package:gold/core/storage/currency_storage.dart';
 import 'package:gold/core/theme/app_colors.dart';
 import 'package:gold/features/chart/model/gold_bar_model.dart';
 import 'package:gold/features/chart/view_model/chart_cubit.dart';
@@ -9,15 +10,67 @@ import 'package:gold/features/chart/view_model/chart_state.dart';
 import 'package:gold/features/gold_market/view_model/gold_cubit.dart';
 import 'package:gold/features/gold_market/view_model/gold_state.dart';
 
-class ChartScreen extends StatelessWidget {
+class ChartScreen extends StatefulWidget {
   const ChartScreen({super.key});
 
+  @override
+  State<ChartScreen> createState() => _ChartScreenState();
+}
+
+class _ChartScreenState extends State<ChartScreen> {
+  final CurrencyStorage _currencyStorage = CurrencyStorage();
+  String _persistedCurrency = 'EGP';
+  double? _persistedFxRate;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPersistedCurrency();
+  }
+
+  Future<void> _loadPersistedCurrency() async {
+    final String savedCurrency =
+    await _currencyStorage.loadCurrency(fallback: 'EGP');
+    final double? savedFx = await _currencyStorage.loadFxRate();
+    if (!mounted) return;
+    setState(() {
+      _persistedCurrency = savedCurrency.toUpperCase();
+      _persistedFxRate = savedFx;
+    });
+  }
+
+  String _resolveActiveCurrency(GoldState goldState) {
+    if (goldState is GetGoldSuccess && goldState.selectedCurrency.isNotEmpty) {
+      return goldState.selectedCurrency.toUpperCase();
+    }
+    return _persistedCurrency.toUpperCase();
+  }
+
+  double _resolveFxRate(GoldState goldState, String activeCurrency) {
+    final String code = activeCurrency.toUpperCase();
+    if (code == 'USD') return 1.0;
+
+    if (goldState is GetGoldSuccess) {
+      // اربط هنا معامل التحويل المباشر لو متاح في GoldState / goldData
+    }
+
+    if (_persistedFxRate != null &&
+        _persistedFxRate! > 0 &&
+        code == _persistedCurrency.toUpperCase()) {
+      return _persistedFxRate!;
+    }
+
+    return _currencyStorage.fallbackFxRateFor(code);
+  }
+
   String _formatMoney(double value, String currency) {
-    switch (currency) {
+    switch (currency.toUpperCase()) {
       case 'USD':
         return '\$${value.toStringAsFixed(2)}';
       case 'EGP':
         return 'ج.م ${value.toStringAsFixed(2)}';
+      case 'SAR':
+        return 'ر.س ${value.toStringAsFixed(2)}';
       case 'EUR':
         return '€${value.toStringAsFixed(2)}';
       case 'GBP':
@@ -29,7 +82,7 @@ class ChartScreen extends StatelessWidget {
     }
   }
 
-  String _formatShortDate(DateTime date, bool isAr) {
+  String _formatAxisDate(DateTime date, bool isAr) {
     const List<String> monthsEn = [
       'Jan',
       'Feb',
@@ -47,16 +100,15 @@ class ChartScreen extends StatelessWidget {
     if (isAr) {
       return '${date.day}/${date.month}';
     }
-    return '${monthsEn[date.month - 1]} ${date.day}';
+    final String dayStr = date.day.toString().padLeft(2, '0');
+    return '${monthsEn[date.month - 1]} $dayStr';
   }
 
-  double? _resolveFxRateFromGoldState(GoldState goldState) {
-    if (goldState is! GetGoldSuccess) return null;
-    if (goldState.selectedCurrency == 'USD') return 1.0;
-
-    // لو GoldPriceModel فيه حقل لسعر الصرف أو الأونصة بالدولار اربطه هنا
-    // مثال: لو عندك goldState.fxRateToUsd أو goldState.goldData.usdOuncePrice
-    return null;
+  String _karatUnitLabel(int karat, bool isAr) {
+    if (isAr) {
+      return '/ جرام عيار $karat';
+    }
+    return '/ g (${karat}K)';
   }
 
   @override
@@ -79,33 +131,37 @@ class ChartScreen extends StatelessWidget {
     final Color accentColor = isDark ? AppColors.goldDark : AppColors.goldLight;
     final Color selectedTextColor = isDark ? Colors.black : Colors.white;
 
-    return BlocProvider(
-      create: (ctx) {
-        final goldState = ctx.read<GoldCubit>().state;
-        final String currency = goldState is GetGoldSuccess
-            ? goldState.selectedCurrency
-            : 'USD';
-        final double? fxRate = _resolveFxRateFromGoldState(goldState);
+    final GoldState initialGoldState = context.read<GoldCubit>().state;
+    final String initialCurrency = _resolveActiveCurrency(initialGoldState);
+    final double initialFxRate =
+    _resolveFxRate(initialGoldState, initialCurrency);
 
-        return ChartCubit()
-          ..loadChart(
-            range: ChartRange.month,
-            currency: currency,
+    return BlocProvider(
+      create: (_) => ChartCubit()
+        ..loadChart(
+          range: ChartRange.month,
+          karat: 21,
+          currency: initialCurrency,
+          fxRateToCurrency: initialFxRate,
+        ),
+      child: BlocListener<GoldCubit, GoldState>(
+        listener: (context, goldState) async {
+          final String selected = _resolveActiveCurrency(goldState);
+          final double fxRate = _resolveFxRate(goldState, selected);
+          await _currencyStorage.saveCurrency(selected, fxRate: fxRate);
+          if (!context.mounted) return;
+          setState(() {
+            _persistedCurrency = selected;
+            _persistedFxRate = fxRate;
+          });
+
+          final ChartCubit chartCubit = context.read<ChartCubit>();
+          chartCubit.loadChart(
+            range: chartCubit.currentRange,
+            karat: chartCubit.currentKarat,
+            currency: selected,
             fxRateToCurrency: fxRate,
           );
-      },
-      child: BlocListener<GoldCubit, GoldState>(
-        listener: (context, goldState) {
-          if (goldState is GetGoldSuccess) {
-            final chartCubit = context.read<ChartCubit>();
-            final String currency = goldState.selectedCurrency;
-            final double? fxRate = _resolveFxRateFromGoldState(goldState);
-            chartCubit.loadChart(
-              range: chartCubit.currentRange,
-              currency: currency,
-              fxRateToCurrency: fxRate,
-            );
-          }
         },
         child: Scaffold(
           backgroundColor: bgColor,
@@ -113,7 +169,7 @@ class ChartScreen extends StatelessWidget {
             child: BlocConsumer<ChartCubit, ChartState>(
               listener: (context, state) async {
                 if (state is ChartLoaded && state.bars.isNotEmpty) {
-                  final triggered =
+                  final bool triggered =
                   await PriceAlertService().checkAndNotifyIfExceeded(
                     currentPrice: state.bars.last.close,
                     currency: state.currency,
@@ -124,8 +180,8 @@ class ChartScreen extends StatelessWidget {
                       SnackBar(
                         content: Text(
                           isAr
-                              ? 'تنبيه: سعر الذهب تجاوز الحد المستهدف!'
-                              : 'Alert: Gold price exceeded your target!',
+                              ? 'تنبيه: سعر الجرام تجاوز الحد المستهدف!'
+                              : 'Alert: Gold gram price exceeded your target!',
                         ),
                       ),
                     );
@@ -134,145 +190,157 @@ class ChartScreen extends StatelessWidget {
               },
               builder: (context, state) {
                 final ChartCubit cubit = context.read<ChartCubit>();
+                final GoldState goldState = context.watch<GoldCubit>().state;
+                final String preferredCurrency =
+                _resolveActiveCurrency(goldState);
+                final double fxRate =
+                _resolveFxRate(goldState, preferredCurrency);
+
                 final ChartRange activeRange =
                 state is ChartLoaded ? state.range : cubit.currentRange;
-                final String activeCurrency = state is ChartLoaded
+                final int activeKarat = cubit.currentKarat;
+                final String displayCurrency = state is ChartLoaded
                     ? state.currency
-                    : cubit.currentCurrency;
+                    : preferredCurrency;
 
                 return RefreshIndicator(
                   color: accentColor,
                   backgroundColor: surfaceColor,
                   onRefresh: () => cubit.loadChart(
                     range: activeRange,
-                    currency: cubit.currentCurrency,
-                    fxRateToCurrency: cubit.currentFxRate,
+                    karat: activeKarat,
+                    currency: preferredCurrency,
+                    fxRateToCurrency: fxRate,
                   ),
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(
                       parent: BouncingScrollPhysics(),
                     ),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
                     children: [
                       // العنوان الفرعي والشارة
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            isAr
-                                ? 'تحليل الأداء • XAU / $activeCurrency'
-                                : 'ASSET METRIC • XAU / $activeCurrency',
-                            style: TextStyle(
-                              fontSize: 11,
-                              letterSpacing: 0.6,
-                              fontWeight: FontWeight.w600,
-                              color: secondaryText,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: elevatedColor,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: borderColor),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                CircleAvatar(
-                                  radius: 3.5,
-                                  backgroundColor: accentColor,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  isAr ? 'بيانات تاريخية' : 'Historical',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: primaryText,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      // عنوان الشاشة والسعر ونسبة التغير
-                      if (state is ChartLoaded) ...[
-                        Text(
-                          isAr ? 'اتجاه الذهب' : 'Gold Trend',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: primaryText,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              _formatMoney(
-                                state.bars.last.close,
-                                state.currency,
-                              ),
+                              isAr
+                                  ? 'تحليل الجرام • عيار $activeKarat / $displayCurrency'
+                                  : 'GRAM METRIC • ${activeKarat}K / $displayCurrency',
                               style: TextStyle(
-                                fontSize: 30,
-                                fontWeight: FontWeight.bold,
-                                color: primaryText,
+                                fontSize: 11,
+                                letterSpacing: 0.5,
+                                fontWeight: FontWeight.w600,
+                                color: secondaryText,
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              isAr ? '/ أونصة' : '/ t oz',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: secondaryText,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: elevatedColor,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: borderColor),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 3.5,
+                                    backgroundColor: accentColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    isAr ? 'سعر الجرام' : 'Gram Chart',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: primaryText,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        _TrendChangeRow(
-                          changePercent: state.changePercent,
-                          firstClose: state.bars.first.close,
-                          lastClose: state.bars.last.close,
-                          currency: state.currency,
-                          isAr: isAr,
-                          secondaryText: secondaryText,
-                          formatMoney: _formatMoney,
-                        ),
-                        if (state.isConvertedByCurrentFx) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            isAr
-                                ? 'ملاحظة: الأسعار التاريخية محوّلة باستخدام سعر الصرف الحالي (Current FX)'
-                                : 'Note: Historical values are converted at the current FX rate.',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: secondaryText,
-                            ),
-                          ),
-                        ],
-                      ] else ...[
-                        Text(
-                          isAr ? 'اتجاه الذهب' : 'Gold Trend',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: primaryText,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 8),
 
-                      // أزرار الفترات الزمنية
+                      // عنوان الشاشة والسعر ونسبة التغير
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isAr
+                                  ? 'مؤشر سعر جرام الذهب'
+                                  : 'Gold Gram Trend',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: primaryText,
+                              ),
+                            ),
+                            if (state is ChartLoaded) ...[
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  Text(
+                                    _formatMoney(
+                                      state.bars.last.close,
+                                      state.currency,
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 30,
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryText,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _karatUnitLabel(activeKarat, isAr),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: secondaryText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              _TrendChangeRow(
+                                changePercent: state.changePercent,
+                                firstClose: state.bars.first.close,
+                                lastClose: state.bars.last.close,
+                                currency: state.currency,
+                                isAr: isAr,
+                                secondaryText: secondaryText,
+                                formatMoney: _formatMoney,
+                              ),
+                              if (state.isConvertedByCurrentFx) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  isAr
+                                      ? 'ملاحظة: الأسعار محوّلة إلى الجرام حسب العيار وسعر الصرف الحالي'
+                                      : 'Note: Gram prices reflect selected karat and current FX rate.',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: secondaryText,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // أزرار الفترات الزمنية بعرض كامل
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -282,7 +350,7 @@ class ChartScreen extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            _RangeButton(
+                            _SegmentButton(
                               label: '1W',
                               isSelected: activeRange == ChartRange.week,
                               accentColor: accentColor,
@@ -290,11 +358,12 @@ class ChartScreen extends StatelessWidget {
                               unselectedTextColor: secondaryText,
                               onTap: () => cubit.loadChart(
                                 range: ChartRange.week,
-                                currency: cubit.currentCurrency,
-                                fxRateToCurrency: cubit.currentFxRate,
+                                karat: activeKarat,
+                                currency: preferredCurrency,
+                                fxRateToCurrency: fxRate,
                               ),
                             ),
-                            _RangeButton(
+                            _SegmentButton(
                               label: '1M',
                               isSelected: activeRange == ChartRange.month,
                               accentColor: accentColor,
@@ -302,31 +371,50 @@ class ChartScreen extends StatelessWidget {
                               unselectedTextColor: secondaryText,
                               onTap: () => cubit.loadChart(
                                 range: ChartRange.month,
-                                currency: cubit.currentCurrency,
-                                fxRateToCurrency: cubit.currentFxRate,
-                              ),
-                            ),
-                            _RangeButton(
-                              label: '3M',
-                              isSelected: activeRange == ChartRange.quarter,
-                              accentColor: accentColor,
-                              selectedTextColor: selectedTextColor,
-                              unselectedTextColor: secondaryText,
-                              onTap: () => cubit.loadChart(
-                                range: ChartRange.quarter,
-                                currency: cubit.currentCurrency,
-                                fxRateToCurrency: cubit.currentFxRate,
+                                karat: activeKarat,
+                                currency: preferredCurrency,
+                                fxRateToCurrency: fxRate,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 10),
 
-                      // محتوى الشارت حسب الحالة
+                      // شريط اختيار العيارات (24, 21, 18) بعرض كامل
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: surfaceColor,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: borderColor),
+                        ),
+                        child: Row(
+                          children: [
+                            for (final int k in [24, 21, 18])
+                              _SegmentButton(
+                                label: isAr ? 'عيار $k' : '${k}K',
+                                isSelected: activeKarat == k,
+                                accentColor: accentColor,
+                                selectedTextColor: selectedTextColor,
+                                unselectedTextColor: secondaryText,
+                                onTap: () => cubit.loadChart(
+                                  range: activeRange,
+                                  karat: k,
+                                  currency: preferredCurrency,
+                                  fxRateToCurrency: fxRate,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // محتوى الشارت حسب الحالة (بعرض كامل)
                       if (state is ChartLoading || state is ChartInitial)
                         Container(
-                          height: 270,
+                          width: double.infinity,
+                          height: 265,
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: surfaceColor,
@@ -337,6 +425,7 @@ class ChartScreen extends StatelessWidget {
                         )
                       else if (state is ChartError)
                         Container(
+                          width: double.infinity,
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
                             color: surfaceColor,
@@ -360,8 +449,9 @@ class ChartScreen extends StatelessWidget {
                               ElevatedButton(
                                 onPressed: () => cubit.loadChart(
                                   range: activeRange,
-                                  currency: cubit.currentCurrency,
-                                  fxRateToCurrency: cubit.currentFxRate,
+                                  karat: activeKarat,
+                                  currency: preferredCurrency,
+                                  fxRateToCurrency: fxRate,
                                 ),
                                 child: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
                               ),
@@ -371,6 +461,8 @@ class ChartScreen extends StatelessWidget {
                       else if (state is ChartLoaded) ...[
                           _GoldLineChartCard(
                             bars: state.bars,
+                            range: state.range,
+                            karat: activeKarat,
                             currency: state.currency,
                             isAr: isAr,
                             surfaceColor: surfaceColor,
@@ -380,43 +472,47 @@ class ChartScreen extends StatelessWidget {
                             primaryText: primaryText,
                             secondaryText: secondaryText,
                             formatMoney: _formatMoney,
-                            formatShortDate: (d) => _formatShortDate(d, isAr),
+                            formatAxisDate: (d) => _formatAxisDate(d, isAr),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
 
-                          // ملخص الفترة الحقيقي
+                          // ملخص الفترة الحقيقي للجرام
                           Row(
                             children: [
                               Expanded(
                                 child: _StatSummaryCard(
-                                  title: isAr ? 'أعلى سعر' : 'Period High',
+                                  title: isAr ? 'أعلى جرام' : 'Gram High',
                                   value: _formatMoney(
                                     state.periodHigh,
                                     state.currency,
                                   ),
-                                  subtitle: isAr ? 'خلال الفترة' : 'In Range',
+                                  subtitle: isAr
+                                      ? 'عيار $activeKarat'
+                                      : '${activeKarat}K In Range',
                                   surfaceColor: surfaceColor,
                                   borderColor: borderColor,
                                   primaryText: primaryText,
                                   secondaryText: secondaryText,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: _StatSummaryCard(
-                                  title: isAr ? 'أقل سعر' : 'Period Low',
+                                  title: isAr ? 'أقل جرام' : 'Gram Low',
                                   value: _formatMoney(
                                     state.periodLow,
                                     state.currency,
                                   ),
-                                  subtitle: isAr ? 'خلال الفترة' : 'In Range',
+                                  subtitle: isAr
+                                      ? 'عيار $activeKarat'
+                                      : '${activeKarat}K In Range',
                                   surfaceColor: surfaceColor,
                                   borderColor: borderColor,
                                   primaryText: primaryText,
                                   secondaryText: secondaryText,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Expanded(
                                 child: _StatSummaryCard(
                                   title: isAr ? 'القراءات' : 'Data Bars',
@@ -430,12 +526,13 @@ class ChartScreen extends StatelessWidget {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
 
-                          // كارت تنبيه السعر المستهدف
+                          // كارت تنبيه السعر المستهدف للجرام
                           _PriceAlertCard(
                             currentPrice: state.bars.last.close,
                             currency: state.currency,
+                            karat: activeKarat,
                             isAr: isAr,
                             surfaceColor: surfaceColor,
                             elevatedColor: elevatedColor,
@@ -513,7 +610,7 @@ class _TrendChangeRow extends StatelessWidget {
   }
 }
 
-class _RangeButton extends StatelessWidget {
+class _SegmentButton extends StatelessWidget {
   final String label;
   final bool isSelected;
   final Color accentColor;
@@ -521,7 +618,7 @@ class _RangeButton extends StatelessWidget {
   final Color unselectedTextColor;
   final VoidCallback onTap;
 
-  const _RangeButton({
+  const _SegmentButton({
     required this.label,
     required this.isSelected,
     required this.accentColor,
@@ -541,7 +638,7 @@ class _RangeButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: isSelected ? accentColor : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
             label,
@@ -559,6 +656,8 @@ class _RangeButton extends StatelessWidget {
 
 class _GoldLineChartCard extends StatelessWidget {
   final List<GoldBarModel> bars;
+  final ChartRange range;
+  final int karat;
   final String currency;
   final bool isAr;
   final Color surfaceColor;
@@ -568,10 +667,12 @@ class _GoldLineChartCard extends StatelessWidget {
   final Color primaryText;
   final Color secondaryText;
   final String Function(double value, String currency) formatMoney;
-  final String Function(DateTime date) formatShortDate;
+  final String Function(DateTime date) formatAxisDate;
 
   const _GoldLineChartCard({
     required this.bars,
+    required this.range,
+    required this.karat,
     required this.currency,
     required this.isAr,
     required this.surfaceColor,
@@ -581,183 +682,297 @@ class _GoldLineChartCard extends StatelessWidget {
     required this.primaryText,
     required this.secondaryText,
     required this.formatMoney,
-    required this.formatShortDate,
+    required this.formatAxisDate,
   });
+
+  int _totalDaysForRange(ChartRange r) {
+    switch (r) {
+      case ChartRange.week:
+        return 7;
+      case ChartRange.month:
+        return 30;
+      case ChartRange.quarter:
+        return 90;
+    }
+  }
+
+  bool _hasDistinctDates(List<GoldBarModel> items) {
+    if (items.length < 2) return false;
+    final Set<String> days = {};
+    for (final b in items) {
+      days.add('${b.date.year}-${b.date.month}-${b.date.day}');
+    }
+    return days.length >= 2;
+  }
+
+  DateTime _effectiveDateForIndex(int index, DateTime now) {
+    if (_hasDistinctDates(bars)) {
+      return bars[index].date;
+    }
+    final int count = bars.length;
+    if (count <= 1) return now;
+    final int totalDays = _totalDaysForRange(range);
+    final DateTime startDate = now.subtract(Duration(days: totalDays));
+    final double ratio = index / (count - 1);
+    final int offsetDays = (ratio * totalDays).round();
+    return startDate.add(Duration(days: offsetDays));
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  int _spotXToBarIndex(double spotX) {
+    final int count = bars.length;
+    if (count <= 1) return 0;
+    final int visualIdx = spotX.round().clamp(0, count - 1);
+    if (isAr) {
+      return (count - 1) - visualIdx;
+    }
+    return visualIdx;
+  }
+
+  List<String> _buildFooterLabels(DateTime now) {
+    if (bars.isEmpty) {
+      return [
+        isAr ? 'البداية' : 'Start',
+        isAr ? 'المنتصف' : 'Mid',
+        isAr ? 'الأخير' : 'Recent',
+        isAr ? 'اليوم' : 'Today',
+      ];
+    }
+
+    final int lastIdx = bars.length - 1;
+    final List<int> indices = [
+      0,
+      (lastIdx / 3).round().clamp(0, lastIdx),
+      ((lastIdx * 2) / 3).round().clamp(0, lastIdx),
+      lastIdx,
+    ];
+
+    final List<String> labels = [];
+    for (int i = 0; i < indices.length; i++) {
+      final int idx = indices[i];
+      final DateTime d = _effectiveDateForIndex(idx, now);
+      if (i == indices.length - 1 && _isSameDay(d, now)) {
+        labels.add(isAr ? 'اليوم' : 'Today');
+      } else {
+        labels.add(formatAxisDate(d));
+      }
+    }
+    return labels;
+  }
+
+  String _formatYAxisPrice(double value) {
+    if (value >= 1000) {
+      return value.toStringAsFixed(0);
+    }
+    if (value >= 100) {
+      return value.toStringAsFixed(1);
+    }
+    return value.toStringAsFixed(2);
+  }
+
+  Alignment _alignmentForIndex(int index, int total) {
+    if (index == 0) return Alignment.centerLeft;
+    if (index == total - 1) return Alignment.centerRight;
+    return Alignment.center;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final DateTime now = DateTime.now();
     double minY = bars.first.close;
     double maxY = bars.first.close;
 
     final List<FlSpot> spots = [];
     for (int i = 0; i < bars.length; i++) {
-      final double val = bars[i].close;
+      final int barIdx = isAr ? (bars.length - 1 - i) : i;
+      final double val = bars[barIdx].close;
       if (val < minY) minY = val;
       if (val > maxY) maxY = val;
       spots.add(FlSpot(i.toDouble(), val));
     }
 
     final double rawRange = (maxY - minY).abs();
-    final double paddingY = (rawRange * 0.12).clamp(1.0, double.infinity);
+    final double paddingY = (rawRange * 0.12).clamp(0.5, double.infinity);
     minY -= paddingY;
     maxY += paddingY;
 
     final double adjustedRange = (maxY - minY).abs();
-    final double yInterval = adjustedRange > 0 ? (adjustedRange / 4) : 10.0;
-    final int xStep = bars.length > 5 ? ((bars.length - 1) / 4).ceil() : 1;
+    final double yInterval = adjustedRange > 0 ? (adjustedRange / 4) : 5.0;
+    final List<String> footerLabels = _buildFooterLabels(now);
+    const double rightAxisReservedSize = 64;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 18, 16, 14),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
       decoration: BoxDecoration(
         color: surfaceColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: borderColor),
       ),
-      child: SizedBox(
-        height: 250,
-        child: LineChart(
-          LineChartData(
-            minY: minY,
-            maxY: maxY,
-            gridData: FlGridData(
-              show: true,
-              drawVerticalLine: false,
-              horizontalInterval: yInterval,
-              getDrawingHorizontalLine: (_) => FlLine(
-                color: borderColor.withOpacity(0.6),
-                strokeWidth: 0.8,
-                dashArray: [4, 4],
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 230,
+            child: LineChart(
+              LineChartData(
+                minX: 0,
+                maxX: (bars.length - 1).toDouble().clamp(0, double.infinity),
+                minY: minY,
+                maxY: maxY,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: yInterval,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: borderColor.withOpacity(0.6),
+                    strokeWidth: 0.8,
+                    dashArray: [4, 4],
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: rightAxisReservedSize,
+                      interval: yInterval,
+                      getTitlesWidget: (value, meta) {
+                        if ((value - minY).abs() < yInterval * 0.25 ||
+                            (maxY - value).abs() < yInterval * 0.25) {
+                          return const SizedBox.shrink();
+                        }
+                        return Center(
+                          child: Text(
+                            _formatYAxisPrice(value),
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(fontSize: 10, color: secondaryText),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => elevatedColor,
+                    tooltipBorder: BorderSide(color: borderColor),
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        final int barIdx = _spotXToBarIndex(spot.x);
+                        final GoldBarModel bar = bars[barIdx];
+                        final DateTime pointDate =
+                        _effectiveDateForIndex(barIdx, now);
+                        final String dateLabel = _isSameDay(pointDate, now)
+                            ? (isAr ? 'اليوم' : 'Today')
+                            : formatAxisDate(pointDate);
+
+                        return LineTooltipItem(
+                          '${formatMoney(bar.close, currency)}\n',
+                          TextStyle(
+                            color: accentColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: isAr
+                                  ? 'عيار $karat • $dateLabel'
+                                  : '${karat}K • $dateLabel',
+                              style: TextStyle(
+                                color: primaryText,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    curveSmoothness: 0.28,
+                    color: accentColor,
+                    barWidth: 2.5,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: false),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          accentColor.withOpacity(0.28),
+                          accentColor.withOpacity(0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              leftTitles: const AxisTitles(
-                sideTitles: SideTitles(showTitles: false),
-              ),
-              rightTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 64,
-                  interval: yInterval,
-                  getTitlesWidget: (value, meta) {
-                    if ((value - minY).abs() < yInterval * 0.25 ||
-                        (maxY - value).abs() < yInterval * 0.25) {
-                      return const SizedBox.shrink();
-                    }
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Text(
-                        value.toStringAsFixed(0),
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(fontSize: 10, color: secondaryText),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              bottomTitles: AxisTitles(
-                sideTitles: SideTitles(
-                  showTitles: true,
-                  reservedSize: 28,
-                  interval: xStep.toDouble(),
-                  getTitlesWidget: (value, meta) {
-                    final int idx = value.round();
-                    if (idx < 0 || idx >= bars.length) {
-                      return const SizedBox.shrink();
-                    }
+          ),
+          const SizedBox(height: 10),
+          const SizedBox(height: 10),
+          Builder(
+            builder: (context) {
+              final List<String> displayLabels =
+              isAr ? footerLabels.reversed.toList() : footerLabels;
+              final int todayIndex = isAr ? 0 : displayLabels.length - 1;
 
-                    final bool isStepped = idx % xStep == 0;
-                    final bool isLast = idx == bars.length - 1;
-                    if (!isStepped && !isLast) {
-                      return const SizedBox.shrink();
-                    }
-
-                    if (isLast &&
-                        bars.length > 2 &&
-                        (bars.length - 1) % xStep != 0) {
-                      final int prevShown =
-                          ((bars.length - 1) ~/ xStep) * xStep;
-                      if ((bars.length - 1 - prevShown) < (xStep * 0.6)) {
-                        return const SizedBox.shrink();
-                      }
-                    }
-
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        formatShortDate(bars[idx].date),
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                          isLast ? FontWeight.bold : FontWeight.normal,
-                          color: isLast ? accentColor : secondaryText,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            borderData: FlBorderData(show: false),
-            lineTouchData: LineTouchData(
-              touchTooltipData: LineTouchTooltipData(
-                getTooltipColor: (_) => elevatedColor,
-                tooltipBorder: BorderSide(color: borderColor),
-                getTooltipItems: (touchedSpots) {
-                  return touchedSpots.map((spot) {
-                    final int idx = spot.x.round().clamp(0, bars.length - 1);
-                    final bar = bars[idx];
-                    return LineTooltipItem(
-                      '${formatMoney(bar.close, currency)}\n',
-                      TextStyle(
-                        color: accentColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                      children: [
-                        TextSpan(
-                          text: formatShortDate(bar.date),
-                          style: TextStyle(
-                            color: secondaryText,
-                            fontSize: 10,
-                            fontWeight: FontWeight.normal,
+              return Directionality(
+                textDirection: TextDirection.ltr,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: rightAxisReservedSize),
+                  child: Row(
+                    children: [
+                      for (int i = 0; i < displayLabels.length; i++)
+                        Expanded(
+                          child: Align(
+                            alignment:
+                            _alignmentForIndex(i, displayLabels.length),
+                            child: Text(
+                              displayLabels[i],
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.fade,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: i == todayIndex
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: i == todayIndex
+                                    ? accentColor
+                                    : secondaryText,
+                              ),
+                            ),
                           ),
                         ),
-                      ],
-                    );
-                  }).toList();
-                },
-              ),
-            ),
-            lineBarsData: [
-              LineChartBarData(
-                spots: spots,
-                isCurved: true,
-                curveSmoothness: 0.28,
-                color: accentColor,
-                barWidth: 2.5,
-                isStrokeCapRound: true,
-                dotData: const FlDotData(show: false),
-                belowBarData: BarAreaData(
-                  show: true,
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      accentColor.withOpacity(0.28),
-                      accentColor.withOpacity(0.0),
                     ],
                   ),
                 ),
-              ),
-            ],
+              );
+            },
           ),
-        ),
+        ],
       ),
     );
   }
@@ -827,6 +1042,7 @@ class _StatSummaryCard extends StatelessWidget {
 class _PriceAlertCard extends StatefulWidget {
   final double currentPrice;
   final String currency;
+  final int karat;
   final bool isAr;
   final Color surfaceColor;
   final Color elevatedColor;
@@ -839,6 +1055,7 @@ class _PriceAlertCard extends StatefulWidget {
   const _PriceAlertCard({
     required this.currentPrice,
     required this.currency,
+    required this.karat,
     required this.isAr,
     required this.surfaceColor,
     required this.elevatedColor,
@@ -863,7 +1080,7 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
   void initState() {
     super.initState();
     _controller = TextEditingController(
-      text: (widget.currentPrice * 1.02).toStringAsFixed(0),
+      text: (widget.currentPrice * 1.02).toStringAsFixed(2),
     );
     _loadSaved();
   }
@@ -881,14 +1098,14 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
   }
 
   Future<void> _save({required bool enabled}) async {
-    final parsed = double.tryParse(_controller.text.trim());
+    final double? parsed = double.tryParse(_controller.text.trim());
     if (enabled && (parsed == null || parsed <= 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             widget.isAr
-                ? 'من فضلك أدخل سعراً مستهدفاً صحيحاً'
-                : 'Please enter a valid target price',
+                ? 'من فضلك أدخل سعراً مستهدفاً صحيحاً للجرام'
+                : 'Please enter a valid gram target price',
           ),
         ),
       );
@@ -917,8 +1134,8 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
         content: Text(
           enabled
               ? (widget.isAr
-              ? 'تم تفعيل التنبيه عند تجاوز ${parsed!.toStringAsFixed(2)} ${widget.currency}'
-              : 'Alert set above ${parsed!.toStringAsFixed(2)} ${widget.currency}')
+              ? 'تم تفعيل التنبيه عند تجاوز ${parsed!.toStringAsFixed(2)} ${widget.currency} للجرام'
+              : 'Alert set above ${parsed!.toStringAsFixed(2)} ${widget.currency} per gram')
               : (widget.isAr ? 'تم إيقاف التنبيه' : 'Price alert disabled'),
         ),
       ),
@@ -936,6 +1153,7 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
     if (_loading) return const SizedBox.shrink();
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: widget.surfaceColor,
@@ -967,7 +1185,9 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.isAr ? 'تنبيه السعر المستهدف' : 'Set Price Alert',
+                      widget.isAr
+                          ? 'تنبيه سعر الجرام (عيار ${widget.karat})'
+                          : 'Set Gram Alert (${widget.karat}K)',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -976,8 +1196,8 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
                     ),
                     Text(
                       widget.isAr
-                          ? 'إشعار عند زيادة السعر عن الحد المحدد'
-                          : 'Notify when gold rises above target',
+                          ? 'إشعار عند زيادة سعر الجرام عن الحد المحدد'
+                          : 'Notify when gram price rises above target',
                       style: TextStyle(
                         fontSize: 11,
                         color: widget.secondaryText,
@@ -1005,7 +1225,9 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
                   decoration: InputDecoration(
                     isDense: true,
                     prefixText: '${widget.currency} ',
-                    labelText: widget.isAr ? 'السعر المستهدف' : 'Target Price',
+                    labelText: widget.isAr
+                        ? 'سعر الجرام المستهدف'
+                        : 'Target Gram Price',
                     labelStyle:
                     TextStyle(color: widget.secondaryText, fontSize: 12),
                     filled: true,
