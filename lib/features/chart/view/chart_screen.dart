@@ -29,9 +29,8 @@ class _ChartScreenState extends State<ChartScreen> {
   }
 
   Future<void> _loadPersistedCurrency() async {
-    final String savedCurrency =
-    await _currencyStorage.loadCurrency(fallback: 'EGP');
-    final double? savedFx = await _currencyStorage.loadFxRate();
+    final savedCurrency = await _currencyStorage.loadCurrency(fallback: 'EGP');
+    final savedFx = await _currencyStorage.loadFxRate();
     if (!mounted) return;
     setState(() {
       _persistedCurrency = savedCurrency.toUpperCase();
@@ -47,20 +46,28 @@ class _ChartScreenState extends State<ChartScreen> {
   }
 
   double _resolveFxRate(GoldState goldState, String activeCurrency) {
-    final String code = activeCurrency.toUpperCase();
+    final code = activeCurrency.toUpperCase();
     if (code == 'USD') return 1.0;
-
-    if (goldState is GetGoldSuccess) {
-      // اربط هنا معامل التحويل المباشر لو متاح في GoldState / goldData
-    }
-
     if (_persistedFxRate != null &&
         _persistedFxRate! > 0 &&
         code == _persistedCurrency.toUpperCase()) {
       return _persistedFxRate!;
     }
-
     return _currencyStorage.fallbackFxRateFor(code);
+  }
+
+  double? _resolveLiveGramPrice(GoldState goldState, int karat) {
+    if (goldState is! GetGoldSuccess) return null;
+    final gold = goldState.goldData;
+    switch (karat) {
+      case 24:
+        return gold.priceGram24k;
+      case 18:
+        return gold.priceGram18k;
+      case 21:
+      default:
+        return gold.priceGram21k;
+    }
   }
 
   String _formatMoney(double value, String currency) {
@@ -83,32 +90,12 @@ class _ChartScreenState extends State<ChartScreen> {
   }
 
   String _formatAxisDate(DateTime date, bool isAr) {
-    const List<String> monthsEn = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
+    const monthsEn = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
     ];
-    if (isAr) {
-      return '${date.day}/${date.month}';
-    }
-    final String dayStr = date.day.toString().padLeft(2, '0');
-    return '${monthsEn[date.month - 1]} $dayStr';
-  }
-
-  String _karatUnitLabel(int karat, bool isAr) {
-    if (isAr) {
-      return '/ جرام عيار $karat';
-    }
-    return '/ g (${karat}K)';
+    if (isAr) return '${date.day}/${date.month}';
+    return '${monthsEn[date.month - 1]} ${date.day.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -135,6 +122,8 @@ class _ChartScreenState extends State<ChartScreen> {
     final String initialCurrency = _resolveActiveCurrency(initialGoldState);
     final double initialFxRate =
     _resolveFxRate(initialGoldState, initialCurrency);
+    final double? initialGramPrice =
+    _resolveLiveGramPrice(initialGoldState, 21);
 
     return BlocProvider(
       create: (_) => ChartCubit()
@@ -143,24 +132,26 @@ class _ChartScreenState extends State<ChartScreen> {
           karat: 21,
           currency: initialCurrency,
           fxRateToCurrency: initialFxRate,
+          liveGramPriceFromHome: initialGramPrice,
         ),
       child: BlocListener<GoldCubit, GoldState>(
         listener: (context, goldState) async {
-          final String selected = _resolveActiveCurrency(goldState);
-          final double fxRate = _resolveFxRate(goldState, selected);
+          final selected = _resolveActiveCurrency(goldState);
+          final fxRate = _resolveFxRate(goldState, selected);
           await _currencyStorage.saveCurrency(selected, fxRate: fxRate);
           if (!context.mounted) return;
           setState(() {
             _persistedCurrency = selected;
             _persistedFxRate = fxRate;
           });
-
-          final ChartCubit chartCubit = context.read<ChartCubit>();
+          final chartCubit = context.read<ChartCubit>();
           chartCubit.loadChart(
             range: chartCubit.currentRange,
             karat: chartCubit.currentKarat,
             currency: selected,
             fxRateToCurrency: fxRate,
+            liveGramPriceFromHome:
+            _resolveLiveGramPrice(goldState, chartCubit.currentKarat),
           );
         },
         child: Scaffold(
@@ -169,8 +160,8 @@ class _ChartScreenState extends State<ChartScreen> {
             child: BlocConsumer<ChartCubit, ChartState>(
               listener: (context, state) async {
                 if (state is ChartLoaded && state.bars.isNotEmpty) {
-                  final bool triggered =
-                  await PriceAlertService().checkAndNotifyIfExceeded(
+                  final triggered = await PriceAlertService()
+                      .checkAndNotifyIfExceeded(
                     currentPrice: state.bars.last.close,
                     currency: state.currency,
                     isAr: isAr,
@@ -189,17 +180,16 @@ class _ChartScreenState extends State<ChartScreen> {
                 }
               },
               builder: (context, state) {
-                final ChartCubit cubit = context.read<ChartCubit>();
-                final GoldState goldState = context.watch<GoldCubit>().state;
-                final String preferredCurrency =
-                _resolveActiveCurrency(goldState);
-                final double fxRate =
-                _resolveFxRate(goldState, preferredCurrency);
-
-                final ChartRange activeRange =
+                final cubit = context.read<ChartCubit>();
+                final goldState = context.watch<GoldCubit>().state;
+                final preferredCurrency = _resolveActiveCurrency(goldState);
+                final fxRate = _resolveFxRate(goldState, preferredCurrency);
+                final activeRange =
                 state is ChartLoaded ? state.range : cubit.currentRange;
-                final int activeKarat = cubit.currentKarat;
-                final String displayCurrency = state is ChartLoaded
+                final activeKarat = cubit.currentKarat;
+                final liveGramPrice =
+                _resolveLiveGramPrice(goldState, activeKarat);
+                final displayCurrency = state is ChartLoaded
                     ? state.currency
                     : preferredCurrency;
 
@@ -211,136 +201,99 @@ class _ChartScreenState extends State<ChartScreen> {
                     karat: activeKarat,
                     currency: preferredCurrency,
                     fxRateToCurrency: fxRate,
+                    liveGramPriceFromHome: liveGramPrice,
+                    forceRefresh: true,
                   ),
                   child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(
-                      parent: BouncingScrollPhysics(),
-                    ),
+
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
                     children: [
-                      // العنوان الفرعي والشارة
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              isAr
-                                  ? 'تحليل الجرام • عيار $activeKarat / $displayCurrency'
-                                  : 'GRAM METRIC • ${activeKarat}K / $displayCurrency',
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            isAr
+                                ? 'تحليل الجرام • عيار $activeKarat / $displayCurrency'
+                                : 'GRAM METRIC • ${activeKarat}K / $displayCurrency',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: secondaryText,
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: elevatedColor,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: borderColor),
+                            ),
+                            child: Text(
+                              isAr ? 'سعر الجرام' : 'Gram Chart',
                               style: TextStyle(
                                 fontSize: 11,
-                                letterSpacing: 0.5,
                                 fontWeight: FontWeight.w600,
-                                color: secondaryText,
+                                color: primaryText,
                               ),
                             ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: elevatedColor,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: borderColor),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 3.5,
-                                    backgroundColor: accentColor,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    isAr ? 'سعر الجرام' : 'Gram Chart',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: primaryText,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-
-                      // عنوان الشاشة والسعر ونسبة التغير
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      Text(
+                        isAr ? 'مؤشر سعر جرام الذهب' : 'Gold Gram Trend',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: primaryText,
+                        ),
+                      ),
+                      if (state is ChartLoaded) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
                           children: [
                             Text(
-                              isAr
-                                  ? 'مؤشر سعر جرام الذهب'
-                                  : 'Gold Gram Trend',
+                              _formatMoney(
+                                state.bars.last.close,
+                                state.currency,
+                              ),
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 30,
                                 fontWeight: FontWeight.bold,
                                 color: primaryText,
                               ),
                             ),
-                            if (state is ChartLoaded) ...[
-                              const SizedBox(height: 6),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  Text(
-                                    _formatMoney(
-                                      state.bars.last.close,
-                                      state.currency,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.bold,
-                                      color: primaryText,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _karatUnitLabel(activeKarat, isAr),
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: secondaryText,
-                                    ),
-                                  ),
-                                ],
+                            const SizedBox(width: 6),
+                            Text(
+                              isAr
+                                  ? '/ جرام عيار $activeKarat'
+                                  : '/ g (${activeKarat}K)',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: secondaryText,
                               ),
-                              const SizedBox(height: 6),
-                              _TrendChangeRow(
-                                changePercent: state.changePercent,
-                                firstClose: state.bars.first.close,
-                                lastClose: state.bars.last.close,
-                                currency: state.currency,
-                                isAr: isAr,
-                                secondaryText: secondaryText,
-                                formatMoney: _formatMoney,
-                              ),
-                              if (state.isConvertedByCurrentFx) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  isAr
-                                      ? 'ملاحظة: الأسعار محوّلة إلى الجرام حسب العيار وسعر الصرف الحالي'
-                                      : 'Note: Gram prices reflect selected karat and current FX rate.',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: secondaryText,
-                                  ),
-                                ),
-                              ],
-                            ],
+                            ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 6),
+                        _TrendChangeRow(
+                          changePercent: state.changePercent,
+                          firstClose: state.bars.first.close,
+                          lastClose: state.bars.last.close,
+                          currency: state.currency,
+                          isAr: isAr,
+                          secondaryText: secondaryText,
+                          formatMoney: _formatMoney,
+                        ),
+                      ],
                       const SizedBox(height: 14),
 
-                      // أزرار الفترات الزمنية بعرض كامل
+                      // فترات الزمن (1W, 1M, 3M)
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -350,38 +303,31 @@ class _ChartScreenState extends State<ChartScreen> {
                         ),
                         child: Row(
                           children: [
-                            _SegmentButton(
-                              label: '1W',
-                              isSelected: activeRange == ChartRange.week,
-                              accentColor: accentColor,
-                              selectedTextColor: selectedTextColor,
-                              unselectedTextColor: secondaryText,
-                              onTap: () => cubit.loadChart(
-                                range: ChartRange.week,
-                                karat: activeKarat,
-                                currency: preferredCurrency,
-                                fxRateToCurrency: fxRate,
+                            for (final entry in [
+                              ('1W', ChartRange.week),
+                              ('1M', ChartRange.month),
+                             // ('3M', ChartRange.quarter),
+                            ])
+                              _SegmentButton(
+                                label: entry.$1,
+                                isSelected: activeRange == entry.$2,
+                                accentColor: accentColor,
+                                selectedTextColor: selectedTextColor,
+                                unselectedTextColor: secondaryText,
+                                onTap: () => cubit.loadChart(
+                                  range: entry.$2,
+                                  karat: activeKarat,
+                                  currency: preferredCurrency,
+                                  fxRateToCurrency: fxRate,
+                                  liveGramPriceFromHome: liveGramPrice,
+                                ),
                               ),
-                            ),
-                            _SegmentButton(
-                              label: '1M',
-                              isSelected: activeRange == ChartRange.month,
-                              accentColor: accentColor,
-                              selectedTextColor: selectedTextColor,
-                              unselectedTextColor: secondaryText,
-                              onTap: () => cubit.loadChart(
-                                range: ChartRange.month,
-                                karat: activeKarat,
-                                currency: preferredCurrency,
-                                fxRateToCurrency: fxRate,
-                              ),
-                            ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 10),
 
-                      // شريط اختيار العيارات (24, 21, 18) بعرض كامل
+                      // العيارات (24, 21, 18)
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -391,7 +337,7 @@ class _ChartScreenState extends State<ChartScreen> {
                         ),
                         child: Row(
                           children: [
-                            for (final int k in [24, 21, 18])
+                            for (final k in [24, 21, 18])
                               _SegmentButton(
                                 label: isAr ? 'عيار $k' : '${k}K',
                                 isSelected: activeKarat == k,
@@ -403,6 +349,8 @@ class _ChartScreenState extends State<ChartScreen> {
                                   karat: k,
                                   currency: preferredCurrency,
                                   fxRateToCurrency: fxRate,
+                                  liveGramPriceFromHome:
+                                  _resolveLiveGramPrice(goldState, k),
                                 ),
                               ),
                           ],
@@ -410,7 +358,6 @@ class _ChartScreenState extends State<ChartScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      // محتوى الشارت حسب الحالة (بعرض كامل)
                       if (state is ChartLoading || state is ChartInitial)
                         Container(
                           width: double.infinity,
@@ -434,24 +381,20 @@ class _ChartScreenState extends State<ChartScreen> {
                           ),
                           child: Column(
                             children: [
-                              Icon(
-                                Icons.show_chart_rounded,
-                                size: 36,
-                                color: accentColor,
-                              ),
-                              const SizedBox(height: 10),
                               Text(
                                 state.message,
                                 textAlign: TextAlign.center,
                                 style: TextStyle(color: secondaryText),
                               ),
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 12),
                               ElevatedButton(
                                 onPressed: () => cubit.loadChart(
                                   range: activeRange,
                                   karat: activeKarat,
                                   currency: preferredCurrency,
                                   fxRateToCurrency: fxRate,
+                                  liveGramPriceFromHome: liveGramPrice,
+                                  forceRefresh: true,
                                 ),
                                 child: Text(isAr ? 'إعادة المحاولة' : 'Retry'),
                               ),
@@ -475,8 +418,6 @@ class _ChartScreenState extends State<ChartScreen> {
                             formatAxisDate: (d) => _formatAxisDate(d, isAr),
                           ),
                           const SizedBox(height: 14),
-
-                          // ملخص الفترة الحقيقي للجرام
                           Row(
                             children: [
                               Expanded(
@@ -527,8 +468,6 @@ class _ChartScreenState extends State<ChartScreen> {
                             ],
                           ),
                           const SizedBox(height: 14),
-
-                          // كارت تنبيه السعر المستهدف للجرام
                           _PriceAlertCard(
                             currentPrice: state.bars.last.close,
                             currency: state.currency,
@@ -576,10 +515,10 @@ class _TrendChangeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double diff = lastClose - firstClose;
-    final bool isUp = diff >= 0;
-    final Color color = isUp ? Colors.green : Colors.redAccent;
-    final String sign = isUp ? '+' : '';
+    final diff = lastClose - firstClose;
+    final isUp = diff >= 0;
+    final color = isUp ? Colors.green : Colors.redAccent;
+    final sign = isUp ? '+' : '';
 
     return Row(
       children: [
@@ -595,14 +534,6 @@ class _TrendChangeRow extends StatelessWidget {
             fontSize: 13,
             fontWeight: FontWeight.bold,
             color: color,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          isAr ? 'خلال الفترة المحددة' : 'for selected period',
-          style: TextStyle(
-            fontSize: 12,
-            color: secondaryText,
           ),
         ),
       ],
@@ -698,7 +629,7 @@ class _GoldLineChartCard extends StatelessWidget {
 
   bool _hasDistinctDates(List<GoldBarModel> items) {
     if (items.length < 2) return false;
-    final Set<String> days = {};
+    final days = <String>{};
     for (final b in items) {
       days.add('${b.date.year}-${b.date.month}-${b.date.day}');
     }
@@ -706,30 +637,23 @@ class _GoldLineChartCard extends StatelessWidget {
   }
 
   DateTime _effectiveDateForIndex(int index, DateTime now) {
-    if (_hasDistinctDates(bars)) {
-      return bars[index].date;
-    }
-    final int count = bars.length;
+    if (_hasDistinctDates(bars)) return bars[index].date;
+    final count = bars.length;
     if (count <= 1) return now;
-    final int totalDays = _totalDaysForRange(range);
-    final DateTime startDate = now.subtract(Duration(days: totalDays));
-    final double ratio = index / (count - 1);
-    final int offsetDays = (ratio * totalDays).round();
+    final totalDays = _totalDaysForRange(range);
+    final startDate = now.subtract(Duration(days: totalDays));
+    final offsetDays = ((index / (count - 1)) * totalDays).round();
     return startDate.add(Duration(days: offsetDays));
   }
 
-  bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   int _spotXToBarIndex(double spotX) {
-    final int count = bars.length;
+    final count = bars.length;
     if (count <= 1) return 0;
-    final int visualIdx = spotX.round().clamp(0, count - 1);
-    if (isAr) {
-      return (count - 1) - visualIdx;
-    }
-    return visualIdx;
+    final visualIdx = spotX.round().clamp(0, count - 1);
+    return isAr ? (count - 1) - visualIdx : visualIdx;
   }
 
   List<String> _buildFooterLabels(DateTime now) {
@@ -741,36 +665,20 @@ class _GoldLineChartCard extends StatelessWidget {
         isAr ? 'اليوم' : 'Today',
       ];
     }
-
-    final int lastIdx = bars.length - 1;
-    final List<int> indices = [
+    final lastIdx = bars.length - 1;
+    final indices = [
       0,
       (lastIdx / 3).round().clamp(0, lastIdx),
       ((lastIdx * 2) / 3).round().clamp(0, lastIdx),
       lastIdx,
     ];
-
-    final List<String> labels = [];
-    for (int i = 0; i < indices.length; i++) {
-      final int idx = indices[i];
-      final DateTime d = _effectiveDateForIndex(idx, now);
-      if (i == indices.length - 1 && _isSameDay(d, now)) {
-        labels.add(isAr ? 'اليوم' : 'Today');
-      } else {
-        labels.add(formatAxisDate(d));
-      }
-    }
-    return labels;
-  }
-
-  String _formatYAxisPrice(double value) {
-    if (value >= 1000) {
-      return value.toStringAsFixed(0);
-    }
-    if (value >= 100) {
-      return value.toStringAsFixed(1);
-    }
-    return value.toStringAsFixed(2);
+    return [
+      for (int i = 0; i < indices.length; i++)
+        (i == indices.length - 1 &&
+            _isSameDay(_effectiveDateForIndex(indices[i], now), now))
+            ? (isAr ? 'اليوم' : 'Today')
+            : formatAxisDate(_effectiveDateForIndex(indices[i], now)),
+    ];
   }
 
   Alignment _alignmentForIndex(int index, int total) {
@@ -781,27 +689,24 @@ class _GoldLineChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final DateTime now = DateTime.now();
+    final now = DateTime.now();
     double minY = bars.first.close;
     double maxY = bars.first.close;
+    final spots = <FlSpot>[];
 
-    final List<FlSpot> spots = [];
     for (int i = 0; i < bars.length; i++) {
-      final int barIdx = isAr ? (bars.length - 1 - i) : i;
-      final double val = bars[barIdx].close;
+      final barIdx = isAr ? (bars.length - 1 - i) : i;
+      final val = bars[barIdx].close;
       if (val < minY) minY = val;
       if (val > maxY) maxY = val;
       spots.add(FlSpot(i.toDouble(), val));
     }
 
-    final double rawRange = (maxY - minY).abs();
-    final double paddingY = (rawRange * 0.12).clamp(0.5, double.infinity);
-    minY -= paddingY;
-    maxY += paddingY;
-
-    final double adjustedRange = (maxY - minY).abs();
-    final double yInterval = adjustedRange > 0 ? (adjustedRange / 4) : 5.0;
-    final List<String> footerLabels = _buildFooterLabels(now);
+    final padY = ((maxY - minY).abs() * 0.12).clamp(0.5, double.infinity);
+    minY -= padY;
+    maxY += padY;
+    final yInterval = ((maxY - minY).abs() / 4).clamp(0.5, double.infinity);
+    final footerLabels = _buildFooterLabels(now);
     const double rightAxisReservedSize = 64;
 
     return Container(
@@ -853,9 +758,12 @@ class _GoldLineChartCard extends StatelessWidget {
                             (maxY - value).abs() < yInterval * 0.25) {
                           return const SizedBox.shrink();
                         }
-                        return Center(
+                        return Padding(
+                          padding: const EdgeInsets.only(left: 4),
                           child: Text(
-                            _formatYAxisPrice(value),
+                            value >= 1000
+                                ? value.toStringAsFixed(0)
+                                : value.toStringAsFixed(1),
                             maxLines: 1,
                             softWrap: false,
                             style: TextStyle(fontSize: 10, color: secondaryText),
@@ -873,14 +781,12 @@ class _GoldLineChartCard extends StatelessWidget {
                     tooltipBorder: BorderSide(color: borderColor),
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
-                        final int barIdx = _spotXToBarIndex(spot.x);
-                        final GoldBarModel bar = bars[barIdx];
-                        final DateTime pointDate =
-                        _effectiveDateForIndex(barIdx, now);
-                        final String dateLabel = _isSameDay(pointDate, now)
+                        final barIdx = _spotXToBarIndex(spot.x);
+                        final bar = bars[barIdx];
+                        final d = _effectiveDateForIndex(barIdx, now);
+                        final dateLabel = _isSameDay(d, now)
                             ? (isAr ? 'اليوم' : 'Today')
-                            : formatAxisDate(pointDate);
-
+                            : formatAxisDate(d);
                         return LineTooltipItem(
                           '${formatMoney(bar.close, currency)}\n',
                           TextStyle(
@@ -896,7 +802,6 @@ class _GoldLineChartCard extends StatelessWidget {
                               style: TextStyle(
                                 color: primaryText,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
@@ -931,13 +836,11 @@ class _GoldLineChartCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const SizedBox(height: 10),
           Builder(
             builder: (context) {
-              final List<String> displayLabels =
+              final displayLabels =
               isAr ? footerLabels.reversed.toList() : footerLabels;
-              final int todayIndex = isAr ? 0 : displayLabels.length - 1;
-
+              final todayIdx = isAr ? 0 : displayLabels.length - 1;
               return Directionality(
                 textDirection: TextDirection.ltr,
                 child: Padding(
@@ -956,10 +859,10 @@ class _GoldLineChartCard extends StatelessWidget {
                               overflow: TextOverflow.fade,
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: i == todayIndex
+                                fontWeight: i == todayIdx
                                     ? FontWeight.bold
                                     : FontWeight.w500,
-                                color: i == todayIndex
+                                color: i == todayIdx
                                     ? accentColor
                                     : secondaryText,
                               ),
@@ -1086,7 +989,7 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
   }
 
   Future<void> _loadSaved() async {
-    final PriceAlertSettings saved = await _alertService.loadAlertSettings();
+    final saved = await _alertService.loadAlertSettings();
     if (!mounted) return;
     setState(() {
       _enabled = saved.enabled;
@@ -1098,7 +1001,7 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
   }
 
   Future<void> _save({required bool enabled}) async {
-    final double? parsed = double.tryParse(_controller.text.trim());
+    final parsed = double.tryParse(_controller.text.trim());
     if (enabled && (parsed == null || parsed <= 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1116,7 +1019,6 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
       enabled: enabled,
       targetPrice: parsed,
     );
-
     if (!mounted) return;
     setState(() => _enabled = enabled);
 
@@ -1167,43 +1069,22 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: widget.accentColor.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  Icons.notifications_active_outlined,
-                  color: widget.accentColor,
-                  size: 20,
-                ),
+              Icon(
+                Icons.notifications_active_outlined,
+                color: widget.accentColor,
+                size: 20,
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.isAr
-                          ? 'تنبيه سعر الجرام (عيار ${widget.karat})'
-                          : 'Set Gram Alert (${widget.karat}K)',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: widget.primaryText,
-                      ),
-                    ),
-                    Text(
-                      widget.isAr
-                          ? 'إشعار عند زيادة سعر الجرام عن الحد المحدد'
-                          : 'Notify when gram price rises above target',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.secondaryText,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  widget.isAr
+                      ? 'تنبيه سعر الجرام (عيار ${widget.karat})'
+                      : 'Set Gram Alert (${widget.karat}K)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: widget.primaryText,
+                  ),
                 ),
               ),
               Switch(
@@ -1233,10 +1114,6 @@ class _PriceAlertCardState extends State<_PriceAlertCard> {
                     filled: true,
                     fillColor: widget.elevatedColor,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: widget.borderColor),
-                    ),
-                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: widget.borderColor),
                     ),

@@ -43,6 +43,20 @@ class HomeScreen extends StatelessWidget {
     }
   }
 
+  String _formatTime(DateTime dt, bool isAr) {
+    final DateTime local = dt.toLocal();
+    final int hour24 = local.hour;
+    final int hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    final String hh = hour12.toString().padLeft(2, '0');
+    final String mm = local.minute.toString().padLeft(2, '0');
+    final bool isPm = hour24 >= 12;
+
+    if (isAr) {
+      return '$hh:$mm ${isPm ? 'م' : 'ص'}';
+    }
+    return '$hh:$mm ${isPm ? 'PM' : 'AM'}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isAr = Localizations.localeOf(context).languageCode == 'ar';
@@ -120,7 +134,6 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
                 child: ListView(
-
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
                   children: [
                     // Header + Refresh
@@ -141,8 +154,8 @@ class HomeScreen extends StatelessWidget {
                             const SizedBox(height: 2),
                             Text(
                               isAr
-                                  ? 'آخر تحديث: ${_formatTime(gold.lastUpdated)}'
-                                  : 'Updated: ${_formatTime(gold.lastUpdated)}',
+                                  ? 'آخر تحديث: ${_formatTime(gold.lastUpdated, true)}'
+                                  : 'Updated: ${_formatTime(gold.lastUpdated, false)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: secondaryText,
@@ -460,6 +473,7 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
   Widget _buildDayRangeBar({
     required double currentPrice,
     required double lowPrice,
@@ -542,11 +556,6 @@ class HomeScreen extends StatelessWidget {
         ),
       ],
     );
-  }
-  String _formatTime(DateTime dt) {
-    final String hh = dt.hour.toString().padLeft(2, '0');
-    final String mm = dt.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
   }
 
   void _openCalculatorSheet(
