@@ -679,7 +679,7 @@ class _SettingScreenState extends State<SettingScreen> {
               const SizedBox(height: 16),
               Center(
                 child: Text(
-                  'GOLD TRACKER • V1.0.0',
+                  'GoldPulse • V1.0.0',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,

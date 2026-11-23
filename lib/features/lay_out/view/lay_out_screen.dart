@@ -46,7 +46,7 @@ class LayOutScreen extends StatelessWidget {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: Image.asset(
-                        'assets/images/app_logo.png',
+                        'assets/images/app_logo.jpg',
                         width: 34,
                         height: 34,
                         fit: BoxFit.cover,
@@ -69,7 +69,7 @@ class LayOutScreen extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Text(
-                      'Aurum',
+                      isAr? 'نبض الذهب' : 'GoldPulse',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
