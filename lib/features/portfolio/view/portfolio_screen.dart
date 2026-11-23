@@ -54,6 +54,8 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       switch (karat) {
         case 24:
           return gold.priceGram24k;
+        case 22:
+          return gold.priceGram24k * (22.0 / 24.0);
         case 21:
           return gold.priceGram21k;
         case 18:
@@ -140,8 +142,8 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         primaryText: primaryText,
         secondaryText: secondaryText,
         selectedTextColor: selectedTextColor,
-        initialBuyPriceForKarat: (karat) =>
-            _liveGramPrice(gold, karat, currency),
+        initialTotalCostFor: (karat, grams) =>
+        _liveGramPrice(gold, karat, currency) * grams,
       ),
     );
 
@@ -202,15 +204,29 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     for (final item in _items) {
       final double currentGramPrice =
       _liveGramPrice(gold, item.karat, currency);
-      totalCurrentValue += item.grams * currentGramPrice;
+      final double itemCurrentVal = item.grams * currentGramPrice;
+      totalCurrentValue += itemCurrentVal;
       totalCostValue += item.totalCost;
       totalGrams += item.grams;
+
+      debugPrint(
+        'PORTFOLIO ITEM [${item.name}]: karat=${item.karat}, grams=${item.grams}, '
+            'liveGram=$currentGramPrice, currentVal=$itemCurrentVal, totalCost=${item.totalCost}',
+      );
     }
 
     final double totalPnl = totalCurrentValue - totalCostValue;
     final double pnlPercent =
     totalCostValue > 0 ? (totalPnl / totalCostValue) * 100 : 0.0;
-    final bool isProfit = totalPnl >= 0;
+
+    // تحديد الحالة بدقة: ربح واضح، خسارة واضحة، أو تعادل قريب جداً من الصفر
+    final bool isLoss = totalPnl < -0.01;
+    final bool isProfit = totalPnl > 0.01;
+    final Color pnlColor = isLoss
+        ? Colors.redAccent
+        : (isProfit ? Colors.green : secondaryText);
+    final String pnlSign = isLoss ? '-' : (isProfit ? '+' : '');
+
     final double totalOunces = totalGrams / _gramsPerTroyOunce;
     final double spot24Gram = _liveGramPrice(gold, 24, currency);
 
@@ -223,6 +239,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           child: _loading
               ? Center(child: CircularProgressIndicator(color: accentColor))
               : ListView(
+            physics: const BouncingScrollPhysics(),
             keyboardDismissBehavior:
             ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
@@ -312,27 +329,22 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                             color: secondaryText,
                           ),
                         ),
-                        if (_items.isNotEmpty)
+                        if (_items.isNotEmpty && totalCostValue > 0)
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: (isProfit
-                                  ? Colors.green
-                                  : Colors.redAccent)
-                                  .withOpacity(0.14),
+                              color: pnlColor.withOpacity(0.14),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${isProfit ? '+' : ''}${pnlPercent.toStringAsFixed(1)}% (${isProfit ? '+' : '-'}${_formatMoney(totalPnl.abs(), currency)})',
+                              '$pnlSign${pnlPercent.abs().toStringAsFixed(1)}% ($pnlSign${_formatMoney(totalPnl.abs(), currency)})',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: isProfit
-                                    ? Colors.green
-                                    : Colors.redAccent,
+                                color: pnlColor,
                               ),
                             ),
                           ),
@@ -382,6 +394,18 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                         ),
                       ],
                     ),
+                    if (_items.isNotEmpty && totalCostValue > 0) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        isAr
+                            ? 'تكلفة الشراء الإجمالية: ${_formatMoney(totalCostValue, currency)}'
+                            : 'Total Buy Cost: ${_formatMoney(totalCostValue, currency)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: secondaryText,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     Divider(color: borderColor, height: 1),
                     const SizedBox(height: 12),
@@ -588,8 +612,8 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           const SizedBox(height: 4),
                           Text(
                             isAr
-                                ? 'أضف سبائكك أو مشغولاتك بالجرام والعيار لمتابعة القيمة السوقية والربح أو الخسارة لحظياً حسب العملة المختارة.'
-                                : 'Tap + Add Item to log grams and karat. Live market valuation updates in real-time.',
+                                ? 'أضف سبائكك أو مشغولاتك بالجرام والعيار وإجمالي سعر الشراء لمتابعة القيمة السوقية والربح أو الخسارة بدقة.'
+                                : 'Tap + Add Item to log grams, karat, and total buy price. Live valuation updates in real-time.',
                             style: TextStyle(
                               fontSize: 12,
                               color: secondaryText,
@@ -619,7 +643,7 @@ class _HoldingBottomSheet extends StatefulWidget {
   final Color primaryText;
   final Color secondaryText;
   final Color selectedTextColor;
-  final double Function(int karat) initialBuyPriceForKarat;
+  final double Function(int karat, double grams) initialTotalCostFor;
 
   const _HoldingBottomSheet({
     required this.existing,
@@ -630,7 +654,7 @@ class _HoldingBottomSheet extends StatefulWidget {
     required this.primaryText,
     required this.secondaryText,
     required this.selectedTextColor,
-    required this.initialBuyPriceForKarat,
+    required this.initialTotalCostFor,
   });
 
   @override
@@ -640,7 +664,7 @@ class _HoldingBottomSheet extends StatefulWidget {
 class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _gramsController;
-  late final TextEditingController _buyPriceController;
+  late final TextEditingController _totalBuyController;
   late final FocusNode _nameFocus;
   late final FocusNode _gramsFocus;
   late final FocusNode _buyFocus;
@@ -651,13 +675,14 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
     super.initState();
     _selectedKarat = widget.existing?.karat ?? 21;
     _nameController = TextEditingController(text: widget.existing?.name ?? '');
+    final double initialGrams = widget.existing?.grams ?? 4.0;
     _gramsController = TextEditingController(
-      text: widget.existing != null ? widget.existing!.grams.toString() : '10',
+      text: initialGrams.toString(),
     );
-    final double initialBuy = widget.existing?.buyPricePerGram ??
-        widget.initialBuyPriceForKarat(_selectedKarat);
-    _buyPriceController = TextEditingController(
-      text: initialBuy.toStringAsFixed(2),
+    final double initialTotalCost = widget.existing?.totalCost ??
+        widget.initialTotalCostFor(_selectedKarat, initialGrams);
+    _totalBuyController = TextEditingController(
+      text: initialTotalCost.toStringAsFixed(2),
     );
     _nameFocus = FocusNode();
     _gramsFocus = FocusNode();
@@ -671,7 +696,7 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
     _buyFocus.dispose();
     _nameController.dispose();
     _gramsController.dispose();
-    _buyPriceController.dispose();
+    _totalBuyController.dispose();
     super.dispose();
   }
 
@@ -682,9 +707,9 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
   void _submit() {
     _unfocus();
     final double grams = double.tryParse(_gramsController.text.trim()) ?? 0;
-    final double buyPrice =
-        double.tryParse(_buyPriceController.text.trim()) ?? 0;
-    if (grams <= 0 || buyPrice <= 0) return;
+    final double totalCost =
+        double.tryParse(_totalBuyController.text.trim()) ?? 0;
+    if (grams <= 0 || totalCost <= 0) return;
 
     final String cleanName = _nameController.text.trim().isEmpty
         ? (widget.isAr
@@ -698,7 +723,8 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
       name: cleanName,
       karat: _selectedKarat,
       grams: grams,
-      buyPricePerGram: buyPrice,
+      buyPricePerGram: totalCost / grams,
+      explicitTotalCost: totalCost,
       boughtAt: widget.existing?.boughtAt ?? DateTime.now(),
     );
 
@@ -780,8 +806,8 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
-                    key: const ValueKey('portfolio_item_buy_price'),
-                    controller: _buyPriceController,
+                    key: const ValueKey('portfolio_item_total_buy'),
+                    controller: _totalBuyController,
                     focusNode: _buyFocus,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -790,8 +816,9 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
                     onSubmitted: (_) => _unfocus(),
                     style: TextStyle(color: widget.primaryText),
                     decoration: InputDecoration(
-                      labelText:
-                      widget.isAr ? 'سعر الشراء/جرام' : 'Buy Price/g',
+                      labelText: widget.isAr
+                          ? 'إجمالي سعر الشراء'
+                          : 'Total Buy Price',
                       labelStyle: TextStyle(
                         color: widget.secondaryText,
                         fontSize: 13,
@@ -830,11 +857,14 @@ class _HoldingBottomSheetState extends State<_HoldingBottomSheet> {
                       ),
                       onSelected: (_) {
                         _unfocus();
+                        final double currentGrams =
+                            double.tryParse(_gramsController.text.trim()) ??
+                                1.0;
                         setState(() {
                           _selectedKarat = k;
-                          if (widget.existing == null) {
-                            _buyPriceController.text =
-                                widget.initialBuyPriceForKarat(k)
+                          if (widget.existing == null && currentGrams > 0) {
+                            _totalBuyController.text =
+                                widget.initialTotalCostFor(k, currentGrams)
                                     .toStringAsFixed(2);
                           }
                         });
@@ -906,7 +936,12 @@ class _HoldingItemCard extends StatelessWidget {
     final double diff = currentValue - item.totalCost;
     final double diffPct =
     item.totalCost > 0 ? (diff / item.totalCost) * 100 : 0.0;
-    final bool isUp = diff >= 0;
+    final bool isLoss = diff < -0.01;
+    final bool isProfit = diff > 0.01;
+    final Color diffColor = isLoss
+        ? Colors.redAccent
+        : (isProfit ? Colors.green : secondaryText);
+    final String sign = isLoss ? '-' : (isProfit ? '+' : '');
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -976,11 +1011,11 @@ class _HoldingItemCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '${isUp ? '+' : '-'}${formatMoney(diff.abs(), currency)} (${isUp ? '+' : ''}${diffPct.toStringAsFixed(1)}%)',
+                '$sign${formatMoney(diff.abs(), currency)} ($sign${diffPct.abs().toStringAsFixed(1)}%)',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: isUp ? Colors.green : Colors.redAccent,
+                  color: diffColor,
                 ),
               ),
             ],

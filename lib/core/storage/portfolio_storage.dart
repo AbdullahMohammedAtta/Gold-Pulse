@@ -6,7 +6,8 @@ class GoldHoldingItem {
   final String name;
   final int karat; // 24, 22, 21, 18
   final double grams;
-  final double buyPricePerGram; // سعر الشراء للجرام بالعملة المختارة أو الأساس
+  final double buyPricePerGram;
+  final double? explicitTotalCost;
   final DateTime boughtAt;
 
   const GoldHoldingItem({
@@ -15,27 +16,49 @@ class GoldHoldingItem {
     required this.karat,
     required this.grams,
     required this.buyPricePerGram,
+    this.explicitTotalCost,
     required this.boughtAt,
   });
 
-  double get totalCost => grams * buyPricePerGram;
+  double get totalCost {
+    if (explicitTotalCost != null && explicitTotalCost! > 0) {
+      return explicitTotalCost!;
+    }
+    return grams * buyPricePerGram;
+  }
+
+  double get effectiveBuyPricePerGram {
+    if (grams <= 0) return buyPricePerGram;
+    return totalCost / grams;
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'karat': karat,
     'grams': grams,
-    'buyPricePerGram': buyPricePerGram,
+    'buyPricePerGram': effectiveBuyPricePerGram,
+    'totalCost': totalCost,
     'boughtAt': boughtAt.toIso8601String(),
   };
 
   factory GoldHoldingItem.fromJson(Map<String, dynamic> json) {
+    final double parsedGrams = (json['grams'] as num?)?.toDouble() ?? 0.0;
+    final double parsedBuyPerGram =
+        (json['buyPricePerGram'] as num?)?.toDouble() ?? 0.0;
+    final double? parsedTotalCost = (json['totalCost'] as num?)?.toDouble();
+
     return GoldHoldingItem(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Gold Item',
       karat: (json['karat'] as num?)?.toInt() ?? 21,
-      grams: (json['grams'] as num?)?.toDouble() ?? 0.0,
-      buyPricePerGram: (json['buyPricePerGram'] as num?)?.toDouble() ?? 0.0,
+      grams: parsedGrams,
+      buyPricePerGram: parsedBuyPerGram > 0
+          ? parsedBuyPerGram
+          : (parsedGrams > 0 && parsedTotalCost != null
+          ? parsedTotalCost / parsedGrams
+          : 0.0),
+      explicitTotalCost: parsedTotalCost,
       boughtAt: DateTime.tryParse(json['boughtAt'] as String? ?? '') ??
           DateTime.now(),
     );

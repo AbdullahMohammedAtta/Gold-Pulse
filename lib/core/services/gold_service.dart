@@ -8,7 +8,7 @@ class GoldService {
   static const String _goldBaseUrl = 'https://api.goldprice.dev/v1/';
   static const String _fxBaseUrl = 'https://open.er-api.com/v6/latest/';
 
-  static const Duration cacheDuration = Duration(hours: 6);
+  static const Duration cacheDuration = Duration(hours: 1);
   static const String _rawSymbolsKey = 'gold_raw_symbols_v2';
   static const String _rawSymbolsTimeKey = 'gold_raw_symbols_time_v2';
 
