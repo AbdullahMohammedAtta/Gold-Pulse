@@ -26,7 +26,6 @@ class LayOutScreen extends StatelessWidget {
     final Color borderColor =
     isDark ? AppColors.darkDivider : AppColors.lightDivider;
     final Color accentColor = isDark ? AppColors.goldDark : AppColors.goldLight;
-    final Color accentIconColor = isDark ? Colors.black : Colors.white;
 
     return BlocConsumer<LayOutCubit, LayOutStates>(
       listener: (context, state) {},
@@ -38,24 +37,37 @@ class LayOutScreen extends StatelessWidget {
             foregroundColor: primaryText,
             elevation: 0,
             scrolledUnderElevation: 0,
+            titleSpacing: 14,
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: accentColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.flash_on,
-                        color: accentIconColor,
-                        size: 18,
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.asset(
+                        'assets/images/app_logo.png',
+                        width: 34,
+                        height: 34,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: accentColor.withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Icon(
+                            Icons.workspace_premium_rounded,
+                            color: accentColor,
+                            size: 19,
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Text(
                       'Aurum',
                       style: TextStyle(
@@ -66,45 +78,34 @@ class LayOutScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: elevatedColor,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircleAvatar(
+                        radius: 4,
+                        backgroundColor: Colors.green,
                       ),
-                      decoration: BoxDecoration(
-                        color: elevatedColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: borderColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        isAr ? 'مباشر' : 'LIVE',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: primaryText,
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 4,
-                            backgroundColor: accentColor,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'LIVE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: secondaryText,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: elevatedColor,
-                      backgroundImage: const NetworkImage(
-                        'https://i.imgur.com/BoN9kdC.png',
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
