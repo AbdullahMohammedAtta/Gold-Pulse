@@ -2,7 +2,11 @@
 
 **GoldPulse** is a cross-platform mobile application built with **Flutter** for tracking live gold prices, inspecting market trends across historical timeframes, and managing personal gold holdings with real-time Profit & Loss (`PnL`) calculations. It includes full `RTL`/`LTR` support for **Arabic** and **English**, **Dark** and **Light** themes, multi-currency display, and local persistence.
 
-![GoldPulse Overview](screenshots/overview_banner.png)
+<p align="center">
+  <img src="screenshots/homeD.jpeg" alt="GoldPulse Dark Mode" width="240" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="screenshots/homeL.jpeg" alt="GoldPulse Light Mode" width="240" />
+</p>
 
 ---
 
@@ -15,8 +19,6 @@ Tracking physical gold investments and market movements often involves fragmente
 - **Rigid User Experience:** Users benefit from fast local storage, bilingual support (`AR`/`EN`), theme switching (`Dark`/`Light`), and clean mobile ergonomics without unnecessary clutter.
 
 **How GoldPulse Helps:** It brings live gold rates, trend charts, a persistent gold vault/portfolio, and customization settings together into a unified mobile experience with consistent gram-based calculations.
-
-![GoldPulse Portfolio & PnL Value](screenshots/problem_solution_vault.png)
 
 ---
 
@@ -38,7 +40,31 @@ Tracking physical gold investments and market movements often involves fragmente
 - **App Branding & Quick Launch:**
   - Unified navigation shell (`LayOutScreen`) featuring the **GoldPulse** brand mark in the app bar, a brief in-app logo entrance on startup, and custom launcher icon support.
 
-![Live Gold Prices & Historical Charts](screenshots/features_market_chart.png)
+---
+
+## App Screens
+
+<p align="center">
+  <img src="screenshots/homeD.jpeg" alt="Home Screen Dark" width="200" />
+  &nbsp;&nbsp;
+   <img src="screenshots/chartD.jpeg" alt="Chart Screen Dark" width="200" />
+  &nbsp;&nbsp;
+   <img src="screenshots/PorD.jpeg" alt="Portfolio Screen Dark" width="200" />
+  &nbsp;&nbsp;
+    <img src="screenshots/settingD.jpeg" alt="Setting Screen Dark" width="200" />
+  &nbsp;&nbsp;
+  
+  <img src="screenshots/homeL.jpeg" alt="Home Screen Light" width="200" />
+  &nbsp;&nbsp;
+  <img src="screenshots/chartL.jpeg" alt="Chart Screen Light" width="200" />
+  &nbsp;&nbsp;
+  <img src="screenshots/porL.jpeg" alt="Portfolio Screen Light" width="200" />
+  &nbsp;&nbsp;
+  <img src="screenshots/settingL.jpeg" alt="Setting Screen Light" width="200" />
+  &nbsp;&nbsp;
+  <!-- أضف باقي السكرين شوتس هنا بنفس الصيغة مثل المحفظة والإعدادات -->
+  <!-- <img src="screenshots/portfolio.jpeg" alt="Portfolio Screen" width="220" /> -->
+</p>
 
 ---
 
@@ -50,7 +76,9 @@ Tracking physical gold investments and market movements often involves fragmente
 - **Data & Networking Layer:** `GoldService` and `GoldPriceModel` for fetching and parsing gold market data.
 - **Localization & Theming:** `flutter_localizations` (`ar`, `en`) paired with custom Light and Dark `ThemeData` definitions.
 
-![GoldPulse Architecture & State Flow](screenshots/architecture_flow.png)
+<p align="center">
+  <img src="screenshots/architecture_flow .jpg" alt="GoldPulse Architecture & State Flow" width="750" />
+</p>
 
 ---
 
