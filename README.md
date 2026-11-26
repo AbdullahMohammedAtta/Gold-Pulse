@@ -2,7 +2,7 @@
 
 **GoldPulse** is a cross-platform mobile application built with **Flutter** for tracking live gold prices, inspecting market trends across historical timeframes, and managing personal gold holdings with real-time Profit & Loss (`PnL`) calculations. It includes full `RTL`/`LTR` support for **Arabic** and **English**, **Dark** and **Light** themes, multi-currency display, and local persistence.
 
-![GoldPulse Overview](screenshots/overview_banner.png)
+![GoldPulse Overview](screenshots/overview_banner.jpg)
 
 ---
 
@@ -50,7 +50,7 @@ Tracking physical gold investments and market movements often involves fragmente
 - **Data & Networking Layer:** `GoldService` and `GoldPriceModel` for fetching and parsing gold market data.
 - **Localization & Theming:** `flutter_localizations` (`ar`, `en`) paired with custom Light and Dark `ThemeData` definitions.
 
-![GoldPulse Architecture & State Flow](screenshots/architecture_flow.png)
+![GoldPulse Architecture & State Flow](screenshots/architecture_flow.jpg)
 
 ---
 
